@@ -1,0 +1,1486 @@
+import { Head, router, usePage } from '@inertiajs/react';
+import {
+    Search, Package, MoreVertical, Barcode, Printer, Eye, Minus, Plus,
+    LayoutGrid, List, ArrowUpDown, AlertTriangle, CheckCircle, XCircle,
+    DollarSign, Boxes, TrendingUp, SortAsc, SortDesc, Info, Pencil, Trash2
+} from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import JsBarcode from 'jsbarcode';
+import AppLayout from '@/layouts/app-layout';
+import type { BreadcrumbItem } from '@/types';
+import { useBranchFilter } from '@/hooks/use-branch-filter';
+import { Button } from '@/components/ui/button';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
+const breadcrumbs: BreadcrumbItem[] = [
+    { title: 'Products', href: '/Products' },
+];
+
+type Product = {
+    id: number;
+    name: string;
+    description?: string | null;
+    price: number | string;
+    category: string;
+    stock: number;
+    restocking_level?: number | null;
+    sku: string;
+    barcode_value?: string | null;
+    image_path?: string | null;
+    status?: 'active' | 'defective' | 'out_of_stock' | 'reserved';
+    defect_reason?: string | null;
+    defective_at?: string | null;
+};
+
+type Paginated<T> = {
+    data: T[];
+    current_page?: number;
+    last_page?: number;
+    per_page?: number;
+    total?: number;
+};
+
+const categories = [
+    'All',
+    'Hand Tools',
+    'Power Tools',
+    'Fasteners',
+    'Electrical Supplies',
+    'Plumbing Supplies',
+    'Paint & Finishing',
+    'Safety Equipment',
+    'Measuring Tools',
+    'Miscellaneous',
+];
+
+const peso = (n: number | string | null | undefined) => {
+    const num = typeof n === 'number' ? n : Number(n);
+    return `₱${(Number.isFinite(num) ? num : 0).toFixed(2)}`;
+};
+
+const productImageUrl = (imagePath?: string | null) => {
+    if (!imagePath) return null;
+    return `/storage/${String(imagePath).replace(/^\//, '')}`;
+};
+
+const getStockStatus = (stock: number) => {
+    if (stock === 0) return 'out';
+    if (stock <= 5) return 'critical';
+    if (stock <= 15) return 'low';
+    return 'ok';
+};
+
+const stockContextLabel = (branch: 'all' | 'lagonglong' | 'balingasag') => {
+    if (branch === 'lagonglong') return 'Lagonglong';
+    if (branch === 'balingasag') return 'Balingasag';
+    return 'All Branches';
+};
+
+const stockBadge = (stock: number, context?: string) => {
+    const status = getStockStatus(stock);
+    const text = context ? `${stock} pcs (${context})` : `${stock} pcs`;
+    switch (status) {
+        case 'out':
+            return <Badge variant="destructive" className="text-[10px] gap-1"><XCircle className="h-3 w-3" />Out</Badge>;
+        case 'critical':
+            return <Badge variant="destructive" className="text-[10px] gap-1"><AlertTriangle className="h-3 w-3" />{text}</Badge>;
+        case 'low':
+            return <Badge variant="secondary" className="text-[10px] gap-1 text-orange-600 border-orange-200 bg-orange-50 dark:bg-orange-950/50 dark:text-orange-400 dark:border-orange-800"><AlertTriangle className="h-3 w-3" />{text}</Badge>;
+        default:
+            return <Badge variant="secondary" className="text-[10px] gap-1 text-green-600 border-green-200 bg-green-50 dark:bg-green-950/50 dark:text-green-400 dark:border-green-800"><CheckCircle className="h-3 w-3" />{text}</Badge>;
+    }
+};
+
+const lowStockBadge = (stock: number, restockingLevel: number) => {
+    const intensity = stock <= Math.max(1, Math.floor(restockingLevel / 2)) ? 'critical' : 'low';
+    const label = `Low Stock! Only ${stock} left`;
+
+    if (intensity === 'critical') {
+        return (
+            <Badge variant="destructive" className="text-[10px] gap-1">
+                <AlertTriangle className="h-3 w-3" />
+                {label}
+            </Badge>
+        );
+    }
+
+    return (
+        <Badge
+            variant="secondary"
+            className="text-[10px] gap-1 text-orange-600 border-orange-200 bg-orange-50 dark:bg-orange-950/50 dark:text-orange-400 dark:border-orange-800"
+        >
+            <AlertTriangle className="h-3 w-3" />
+            {label}
+        </Badge>
+    );
+};
+
+type SortKey = 'name' | 'price-asc' | 'price-desc' | 'stock-asc' | 'stock-desc';
+type ViewMode = 'grid' | 'list';
+
+export default function Products() {
+    const { products: productsPaginator, filters } = usePage<{ products?: Paginated<Product>; filters?: { status?: string } }>().props;
+    const { auth } = usePage<{ auth?: { user?: { role: string; branch_key: 'lagonglong' | 'balingasag' | null } } }>().props;
+    const user = auth?.user ?? null;
+    const userBranchKey = user?.branch_key ?? null;
+    const isBranchRestrictedUser = !!user && ['staff', 'cashier', 'delivery'].includes(user.role) && !!userBranchKey;
+
+    const { branch: globalBranch } = useBranchFilter();
+    const effectiveBranch: 'all' | 'lagonglong' | 'balingasag' = isBranchRestrictedUser
+        ? (userBranchKey as 'lagonglong' | 'balingasag')
+        : globalBranch;
+
+    const [productsRefreshNonce, setProductsRefreshNonce] = useState(0);
+    const [products, setProducts] = useState<Product[]>(productsPaginator?.data ?? []);
+    const [allBranchStockById, setAllBranchStockById] = useState<Map<number, number>>(new Map());
+    const [searchQuery, setSearchQuery] = useState('');
+    const [activeCategory, setActiveCategory] = useState('All');
+    const [sortBy, setSortBy] = useState<SortKey>('name');
+    const [viewMode, setViewMode] = useState<ViewMode>('grid');
+    const [statusFilter, setStatusFilter] = useState<'active' | 'defective' | 'out_of_stock' | 'reserved'>(() => {
+        const v = String(filters?.status ?? 'active');
+        if (['active', 'defective', 'out_of_stock', 'reserved'].includes(v)) return v as any;
+        return 'active';
+    });
+
+    useEffect(() => {
+        setProducts(productsPaginator?.data ?? []);
+    }, [productsPaginator]);
+
+    useEffect(() => {
+        const v = String(filters?.status ?? 'active');
+        if (['active', 'defective', 'out_of_stock', 'reserved'].includes(v)) {
+            setStatusFilter(v as any);
+        } else {
+            setStatusFilter('active');
+        }
+    }, [filters?.status]);
+
+    useEffect(() => {
+        if (effectiveBranch !== 'all') return;
+
+        let cancelled = false;
+
+        (async () => {
+            try {
+                const res = await fetch(`/inventory/items`, {
+                    headers: { 'Accept': 'application/json' },
+                    credentials: 'same-origin',
+                });
+
+                if (!res.ok) return;
+                const data = await res.json();
+                const totals = new Map<number, number>();
+
+                for (const it of (data.items ?? []) as any[]) {
+                    const id = Number(it.product_id);
+                    const stock = Number(it.stock) || 0;
+                    totals.set(id, (totals.get(id) ?? 0) + stock);
+                }
+
+                if (cancelled) return;
+                setAllBranchStockById(totals);
+
+                const base = productsPaginator?.data ?? [];
+                setProducts(base.map((p) => ({ ...p, stock: totals.get(p.id) ?? p.stock })));
+            } catch {
+                // ignore
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [effectiveBranch, productsPaginator, productsRefreshNonce]);
+
+    useEffect(() => {
+        if (effectiveBranch === 'all') {
+            const base = productsPaginator?.data ?? [];
+            setProducts(base.map((p) => ({ ...p, stock: allBranchStockById.get(p.id) ?? p.stock })));
+            return;
+        }
+
+        let cancelled = false;
+
+        (async () => {
+            try {
+                const params = new URLSearchParams();
+                params.set('branch_key', effectiveBranch);
+
+                const res = await fetch(`/inventory/items?${params.toString()}`, {
+                    headers: { 'Accept': 'application/json' },
+                    credentials: 'same-origin',
+                });
+
+                if (!res.ok) return;
+                const data = await res.json();
+
+                const stockById = new Map<number, number>();
+                for (const it of (data.items ?? []) as any[]) {
+                    const id = Number(it.product_id);
+                    stockById.set(id, Number(it.stock) || 0);
+                }
+
+                const base = productsPaginator?.data ?? [];
+                const merged = base.map((p) => ({
+                    ...p,
+                    stock: stockById.get(p.id) ?? p.stock,
+                }));
+
+                if (!cancelled) setProducts(merged);
+            } catch {
+                // ignore
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [effectiveBranch, productsPaginator, allBranchStockById, productsRefreshNonce]);
+
+    const [isAddProductOpen, setIsAddProductOpen] = useState(false);
+    const [newProduct, setNewProduct] = useState<Omit<Product, 'id'>>({
+        name: '',
+        description: '',
+        price: 0,
+        category: 'Hand Tools',
+        stock: 0,
+        restocking_level: 10,
+        sku: '',
+        image_path: null,
+        status: 'active',
+        defect_reason: null,
+        defective_at: null,
+    });
+
+    const [newProductImage, setNewProductImage] = useState<File | null>(null);
+    const [newProductImagePreviewUrl, setNewProductImagePreviewUrl] = useState<string | null>(null);
+
+    // Barcode dialog state
+    const [barcodeProduct, setBarcodeProduct] = useState<Product | null>(null);
+    const [barcodeQty, setBarcodeQty] = useState(1);
+    const [barcodesGenerated, setBarcodesGenerated] = useState(false);
+    const barcodeContainerRef = useRef<HTMLDivElement>(null);
+
+    // Details dialog state
+    const [detailsProduct, setDetailsProduct] = useState<Product | null>(null);
+
+    // Edit dialog state
+    const [isEditProductOpen, setIsEditProductOpen] = useState(false);
+    const [editProduct, setEditProduct] = useState<Product | null>(null);
+    const [editProductImage, setEditProductImage] = useState<File | null>(null);
+    const [editProductImagePreviewUrl, setEditProductImagePreviewUrl] = useState<string | null>(null);
+
+    useEffect(() => {
+        return () => {
+            if (editProductImagePreviewUrl) {
+                URL.revokeObjectURL(editProductImagePreviewUrl);
+            }
+        };
+    }, [editProductImagePreviewUrl]);
+
+    // --- Filtering & Sorting ---
+    const filteredProducts = useMemo(() => {
+        let filtered = products.filter((p) => {
+            const matchesSearch =
+                searchQuery.trim().length === 0 ||
+                p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                p.sku.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                String(p.id).toLowerCase().includes(searchQuery.toLowerCase());
+            const matchesCategory = activeCategory === 'All' || p.category === activeCategory;
+            return matchesSearch && matchesCategory;
+        });
+
+        switch (sortBy) {
+            case 'name': filtered.sort((a, b) => a.name.localeCompare(b.name)); break;
+            case 'price-asc': filtered.sort((a, b) => (Number(a.price) || 0) - (Number(b.price) || 0)); break;
+            case 'price-desc': filtered.sort((a, b) => (Number(b.price) || 0) - (Number(a.price) || 0)); break;
+            case 'stock-asc': filtered.sort((a, b) => a.stock - b.stock); break;
+            case 'stock-desc': filtered.sort((a, b) => b.stock - a.stock); break;
+        }
+
+        return filtered;
+    }, [products, searchQuery, activeCategory, sortBy]);
+
+    // --- Stats ---
+    const stats = useMemo(() => {
+        const totalProducts = filteredProducts.length;
+        const totalValue = filteredProducts.reduce((s, p) => s + (Number(p.price) || 0) * p.stock, 0);
+        const totalUnits = filteredProducts.reduce((s, p) => s + p.stock, 0);
+        const lowStockCount = filteredProducts.filter(p => getStockStatus(p.stock) === 'low' || getStockStatus(p.stock) === 'critical').length;
+        const outOfStock = filteredProducts.filter(p => p.stock === 0).length;
+        return { totalProducts, totalValue, totalUnits, lowStockCount, outOfStock };
+    }, [filteredProducts]);
+
+    // --- Barcode Logic ---
+    const openBarcodeDialog = (product: Product) => {
+        setBarcodeProduct(product);
+        setBarcodeQty(1);
+        setBarcodesGenerated(false);
+    };
+
+    const openEditDialog = (product: Product) => {
+        setEditProduct(product);
+        setEditProductImage(null);
+        setEditProductImagePreviewUrl(null);
+        setIsEditProductOpen(true);
+    };
+
+    const closeBarcodeDialog = () => {
+        setBarcodeProduct(null);
+        setBarcodesGenerated(false);
+    };
+
+    const generateBarcodes = useCallback(() => {
+        if (!barcodeProduct || !barcodeContainerRef.current) return;
+        const container = barcodeContainerRef.current;
+        container.innerHTML = '';
+
+        const barcodeValue =
+            (barcodeProduct.barcode_value && String(barcodeProduct.barcode_value).trim() !== ''
+                ? String(barcodeProduct.barcode_value)
+                : barcodeProduct.sku && String(barcodeProduct.sku).trim() !== ''
+                    ? String(barcodeProduct.sku)
+                    : String(barcodeProduct.id));
+
+        for (let i = 0; i < barcodeQty; i++) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'barcode-item';
+            wrapper.style.cssText = 'display:inline-flex;flex-direction:column;align-items:center;padding:12px;border:1px dashed #d1d5db;border-radius:8px;background:#fff;gap:4px;';
+
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            wrapper.appendChild(svg);
+
+            const nameEl = document.createElement('div');
+            nameEl.style.cssText = 'font-size:10px;font-weight:600;color:#374151;text-align:center;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+            nameEl.textContent = barcodeProduct.name;
+            wrapper.appendChild(nameEl);
+
+            const priceEl = document.createElement('div');
+            priceEl.style.cssText = 'font-size:9px;color:#6b7280;';
+            priceEl.textContent = peso(barcodeProduct.price);
+            wrapper.appendChild(priceEl);
+
+            container.appendChild(wrapper);
+
+            try {
+                JsBarcode(svg, barcodeValue, {
+                    format: 'CODE128', width: 1.5, height: 40,
+                    displayValue: true, fontSize: 11, margin: 4, textMargin: 2,
+                });
+            } catch {
+                svg.textContent = 'Error';
+            }
+        }
+        setBarcodesGenerated(true);
+    }, [barcodeProduct, barcodeQty]);
+
+    const printBarcodes = () => {
+        if (!barcodeContainerRef.current) return;
+        const pw = window.open('', '_blank', 'width=800,height=600');
+        if (!pw) return;
+        pw.document.write(`<!DOCTYPE html><html><head><title>Barcodes - ${barcodeProduct?.name ?? 'Product'}</title>
+        <style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;padding:16px}
+        .print-header{text-align:center;margin-bottom:16px;font-size:14px;font-weight:bold;color:#374151}
+        .barcode-grid{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
+        .barcode-item{display:inline-flex;flex-direction:column;align-items:center;padding:10px;border:1px dashed #d1d5db;border-radius:6px;gap:3px}
+        .barcode-item svg{display:block}@media print{.barcode-item{border:1px dashed #999;page-break-inside:avoid}}</style>
+        </head><body><div class="print-header">${barcodeProduct?.name ?? 'Product'} — ${barcodeQty} Barcode(s)</div>
+        <div class="barcode-grid">${barcodeContainerRef.current.innerHTML}</div>
+        <script>window.onload=function(){window.print()}<\/script></body></html>`);
+        pw.document.close();
+    };
+
+    const generateSku = useCallback(() => {
+        const category = (newProduct.category ?? '').trim();
+        const prefix = (category.length > 0
+            ? category
+                .split(/\s+/)
+                .filter(Boolean)
+                .map((w) => w[0] ?? '')
+                .join('')
+            : 'PRD'
+        )
+            .toUpperCase()
+            .slice(0, 4);
+
+        const suffix = String(Date.now()).slice(-4);
+        setNewProduct((p) => ({ ...p, sku: `${prefix}-${suffix}` }));
+    }, [newProduct.category]);
+
+    const onCreateProduct = () => {
+        const sku = newProduct.sku.trim();
+        const name = newProduct.name.trim();
+        if (!sku || !name) return;
+
+        const status = String(newProduct.status ?? 'active');
+        if (status === 'defective' && String(newProduct.defect_reason ?? '').trim() === '') return;
+
+        const form = new FormData();
+        form.append('sku', sku);
+        form.append('name', name);
+        form.append('description', String(newProduct.description ?? ''));
+        form.append('category', newProduct.category ?? '');
+        form.append('price', String(Number(newProduct.price) || 0));
+        form.append('stock', String(Number(newProduct.stock) || 0));
+        form.append('restocking_level', String(Number(newProduct.restocking_level) || 0));
+        form.append('status', status);
+        if (status === 'defective') {
+            form.append('defect_reason', String(newProduct.defect_reason ?? ''));
+        }
+        if (newProductImage) {
+            form.append('image', newProductImage);
+        }
+
+        router.post(
+            '/Products',
+            form,
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setIsAddProductOpen(false);
+                    setNewProduct({
+                        name: '',
+                        description: '',
+                        price: 0,
+                        category: 'Hand Tools',
+                        stock: 0,
+                        restocking_level: 10,
+                        sku: '',
+                        image_path: null,
+                        status: 'active',
+                        defect_reason: null,
+                        defective_at: null,
+                    });
+                    setNewProductImage(null);
+                },
+            }
+        );
+    };
+
+    const onUpdateProduct = () => {
+        if (!editProduct) return;
+
+        const sku = editProduct.sku.trim();
+        const name = editProduct.name.trim();
+        if (!sku || !name) return;
+
+        const status = String(editProduct.status ?? 'active');
+        if (status === 'defective' && String(editProduct.defect_reason ?? '').trim() === '') return;
+
+        const form = new FormData();
+        form.append('sku', sku);
+        form.append('name', name);
+        form.append('description', String(editProduct.description ?? ''));
+        form.append('category', editProduct.category ?? '');
+        form.append('price', String(Number(editProduct.price) || 0));
+        form.append('restocking_level', String(Number(editProduct.restocking_level) || 0));
+        form.append('status', status);
+        if (status === 'defective') {
+            form.append('defect_reason', String(editProduct.defect_reason ?? ''));
+        }
+        if (editProductImage) {
+            form.append('image', editProductImage);
+        }
+
+        router.put(`/Products/${editProduct.id}`, form, {
+            preserveScroll: true,
+            forceFormData: true,
+            onError: (errors) => {
+                // eslint-disable-next-line no-console
+                console.error('Update product failed:', errors);
+            },
+            onSuccess: () => {
+                setProductsRefreshNonce((n) => n + 1);
+                router.visit(window.location.href, { only: ['products'], preserveScroll: true });
+                setIsEditProductOpen(false);
+                setEditProduct(null);
+                setEditProductImage(null);
+            },
+        });
+    };
+
+    const onDeleteProduct = (product: Product) => {
+        if (confirm(`Are you sure you want to delete ${product.name}?`)) {
+            router.delete(`/Products/${product.id}`, {
+                preserveScroll: true,
+            });
+        }
+    };
+
+    const applyStatusFilter = (next: typeof statusFilter) => {
+        setStatusFilter(next);
+        const url = new URL(window.location.href);
+        url.searchParams.set('status', next);
+        router.visit(url.toString(), { only: ['products', 'filters'], preserveScroll: true });
+    };
+
+    return (
+        <AppLayout breadcrumbs={breadcrumbs}>
+            <Head title="Products" />
+            <div className="space-y-6 p-6">
+
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                        <h1 className="text-3xl font-bold">Products</h1>
+                        <p className="text-muted-foreground">Manage your inventory and product catalog</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Button onClick={() => setIsAddProductOpen(true)}>
+                            <Plus className="mr-2 h-4 w-4" />
+                            Add Product
+                        </Button>
+                    </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-xs font-medium">Products</CardTitle>
+                            <Boxes className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold">{stats.totalProducts}</div>
+                            <p className="text-xs text-muted-foreground">
+                                {activeCategory !== 'All' ? `in ${activeCategory}` : 'total items'}
+                            </p>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-xs font-medium">Units</CardTitle>
+                            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold">{stats.totalUnits.toLocaleString()}</div>
+                            <p className="text-xs text-muted-foreground">in stock</p>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-xs font-medium">Inventory Value</CardTitle>
+                            <DollarSign className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold">₱{stats.totalValue.toLocaleString()}</div>
+                            <p className="text-xs text-muted-foreground">total value</p>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-xs font-medium">Low Stock</CardTitle>
+                            <AlertTriangle className="h-4 w-4 text-orange-500" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold text-orange-600">{stats.lowStockCount}</div>
+                            <p className="text-xs text-muted-foreground">
+                                {stats.outOfStock > 0 ? `${stats.outOfStock} out of stock` : 'items need attention'}
+                            </p>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                <div className="rounded-xl border-border bg-card p-4 space-y-3">
+                    <div className="flex items-start gap-3">
+                        <div className="pt-1 text-xs font-semibold text-muted-foreground shrink-0">Status:</div>
+                        <div className="flex flex-wrap gap-2">
+                            {(
+                                [
+                                    { key: 'active', label: 'Active' },
+                                    { key: 'defective', label: 'Defective' },
+                                ] as const
+                            ).map((s) => (
+                                <button
+                                    key={s.key}
+                                    onClick={() => applyStatusFilter(s.key)}
+                                    className={
+                                        statusFilter === s.key
+                                            ? 'rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors'
+                                            : 'rounded-md bg-muted px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors'
+                                    }
+                                >
+                                    {s.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div className="relative flex-1 max-w-md">
+                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            <input
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="h-9 w-full rounded-lg border border-border bg-background pl-9 pr-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                placeholder="Search by name, SKU, or ID..."
+                            />
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <Select value={sortBy} onValueChange={(v: SortKey) => setSortBy(v)}>
+                                <SelectTrigger className="w-[160px] h-9">
+                                    <ArrowUpDown className="mr-2 h-3.5 w-3.5" />
+                                    <SelectValue placeholder="Sort by" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="name">Name (A-Z)</SelectItem>
+                                    <SelectItem value="price-asc">Price: Low → High</SelectItem>
+                                    <SelectItem value="price-desc">Price: High → Low</SelectItem>
+                                    <SelectItem value="stock-asc">Stock: Low → High</SelectItem>
+                                    <SelectItem value="stock-desc">Stock: High → Low</SelectItem>
+                                </SelectContent>
+                            </Select>
+
+                            <div className="flex rounded-lg border overflow-hidden">
+                                <button
+                                    onClick={() => setViewMode('grid')}
+                                    className={`inline-flex h-9 w-9 items-center justify-center transition-colors ${viewMode === 'grid' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
+                                >
+                                    <LayoutGrid className="h-4 w-4" />
+                                </button>
+                                <button
+                                    onClick={() => setViewMode('list')}
+                                    className={`inline-flex h-9 w-9 items-center justify-center transition-colors ${viewMode === 'list' ? 'bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-muted'}`}
+                                >
+                                    <List className="h-4 w-4" />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex items-start gap-3">
+                        <div className="pt-1 text-xs font-semibold text-muted-foreground shrink-0">Catalog:</div>
+                        <div className="flex flex-wrap gap-2">
+                            {categories.map((c) => (
+                                <button
+                                    key={c}
+                                    onClick={() => setActiveCategory(c)}
+                                    className={
+                                        activeCategory === c
+                                            ? 'rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition-colors'
+                                            : 'rounded-md bg-muted px-3 py-1.5 text-xs font-semibold text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors'
+                                    }
+                                >
+                                    {c}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="rounded-xl border-border bg-card p-4">
+                    {filteredProducts.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+                            <Package className="h-12 w-12 mb-3 opacity-30" />
+                            <div className="font-medium">No products found</div>
+                            <div className="text-sm mt-1">Try adjusting your filters</div>
+                        </div>
+                    ) : viewMode === 'grid' ? (
+                        <div className="max-h-[calc(100svh-22rem)] overflow-auto pr-1">
+                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+                                {filteredProducts.map((p) => (
+                                    <ProductCardGrid
+                                        key={p.id}
+                                        product={p}
+                                        onGenerateBarcode={openBarcodeDialog}
+                                        onViewDetails={setDetailsProduct}
+                                        onEdit={openEditDialog}
+                                        onDelete={onDeleteProduct}
+                                        branch={effectiveBranch}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="max-h-[calc(100svh-22rem)] overflow-auto pr-1 space-y-2">
+                            {filteredProducts.map((p) => (
+                                <ProductCardList
+                                    key={p.id}
+                                    product={p}
+                                    onGenerateBarcode={openBarcodeDialog}
+                                    onViewDetails={setDetailsProduct}
+                                    onEdit={openEditDialog}
+                                    onDelete={onDeleteProduct}
+                                    branch={effectiveBranch}
+                                />
+                            ))}
+                        </div>
+                    )}
+
+                    <div className="mt-3 text-xs text-muted-foreground text-center">
+                        Showing {filteredProducts.length} of {products.length} products
+                    </div>
+                </div>
+
+                <Dialog
+                    open={isAddProductOpen}
+                    onOpenChange={(open) => {
+                        setIsAddProductOpen(open);
+                        if (!open) {
+                            setNewProductImage(null);
+                            if (newProductImagePreviewUrl) {
+                                URL.revokeObjectURL(newProductImagePreviewUrl);
+                            }
+                            setNewProductImagePreviewUrl(null);
+                        }
+                    }}
+                >
+                    <DialogContent className="sm:max-w-3xl">
+                        <DialogHeader>
+                            <DialogTitle>Add Product</DialogTitle>
+                            <DialogDescription>Fill in the product details to add it to the catalog.</DialogDescription>
+                        </DialogHeader>
+
+                        <div className="grid gap-4 lg:grid-cols-2">
+                            <div className="rounded-lg bg-muted p-6">
+                                <div className="flex items-center justify-center">
+                                    {newProductImagePreviewUrl ? (
+                                        <img
+                                            src={newProductImagePreviewUrl}
+                                            alt={newProduct.name || 'New product'}
+                                            className="h-56 w-full max-w-sm rounded-xl object-cover border"
+                                        />
+                                    ) : (
+                                        <div className="h-40 w-full max-w-sm rounded-xl bg-orange-100 flex items-center justify-center dark:bg-orange-950">
+                                            <Package className="h-10 w-10 text-orange-600" />
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="mt-4 space-y-1">
+                                    <label className="text-xs font-medium text-muted-foreground">Product image</label>
+                                    <Input
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0] ?? null;
+
+                                            if (newProductImagePreviewUrl) {
+                                                URL.revokeObjectURL(newProductImagePreviewUrl);
+                                            }
+
+                                            setNewProductImage(file);
+                                            setNewProductImagePreviewUrl(file ? URL.createObjectURL(file) : null);
+                                        }}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid gap-3">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-medium text-muted-foreground">Status</label>
+                                    <Select
+                                        value={String(newProduct.status ?? 'active')}
+                                        onValueChange={(value: any) =>
+                                            setNewProduct((p) => ({
+                                                ...p,
+                                                status: value,
+                                                defect_reason: value === 'defective' ? p.defect_reason : null,
+                                            }))
+                                        }
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select status" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="active">Active</SelectItem>
+                                            <SelectItem value="defective">Defective</SelectItem>
+                                            <SelectItem value="out_of_stock">Out of stock</SelectItem>
+                                            <SelectItem value="reserved">Reserved</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                {String(newProduct.status ?? 'active') === 'defective' && (
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-muted-foreground">
+                                            Defect reason <span className="text-destructive">*</span>
+                                        </label>
+                                        <textarea
+                                            value={String(newProduct.defect_reason ?? '')}
+                                            onChange={(e) => setNewProduct((p) => ({ ...p, defect_reason: e.target.value }))}
+                                            placeholder="Describe the issue (required)"
+                                            className="min-h-[84px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                        />
+                                    </div>
+                                )}
+
+                                <div className="space-y-1">
+                                    <label className="text-xs font-medium text-muted-foreground">Category</label>
+                                    <Select
+                                        value={newProduct.category}
+                                        onValueChange={(value: any) => setNewProduct((p) => ({ ...p, category: value }))}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select category" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {categories.filter((c) => c !== 'All').map((c) => (
+                                                <SelectItem key={c} value={c}>
+                                                    {c}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-muted-foreground">
+                                            SKU <span className="text-destructive">*</span>
+                                        </label>
+                                        <div className="flex gap-2">
+                                            <Input
+                                                value={newProduct.sku}
+                                                onChange={(e) => setNewProduct((p) => ({ ...p, sku: e.target.value }))}
+                                                placeholder="e.g. HT-001"
+                                            />
+                                            <Button variant="outline" onClick={generateSku} type="button">
+                                                Generate
+                                            </Button>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-muted-foreground">
+                                            Product name <span className="text-destructive">*</span>
+                                        </label>
+                                        <Input
+                                            value={newProduct.name}
+                                            onChange={(e) => setNewProduct((p) => ({ ...p, name: e.target.value }))}
+                                            placeholder="e.g. Measuring Tape 25ft"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-muted-foreground">Unit price (₱)</label>
+                                        <Input
+                                            type="number"
+                                            value={newProduct.price}
+                                            onChange={(e) => setNewProduct((p) => ({ ...p, price: Number(e.target.value) || 0 }))}
+                                            placeholder="e.g. 250"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-muted-foreground">Initial stock</label>
+                                        <Input
+                                            type="number"
+                                            value={newProduct.stock}
+                                            onChange={(e) => setNewProduct((p) => ({ ...p, stock: Number(e.target.value) || 0 }))}
+                                            placeholder="e.g. 10"
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-xs font-medium text-muted-foreground">Restocking Level</label>
+                                    <Input
+                                        type="number"
+                                        value={Number(newProduct.restocking_level) || 0}
+                                        onChange={(e) => setNewProduct((p) => ({ ...p, restocking_level: Number(e.target.value) || 0 }))}
+                                        placeholder="e.g. 10"
+                                    />
+                                    <div className="text-[11px] text-muted-foreground">
+                                        Alert will show when stock falls to or below this number (0 = no alert)
+                                    </div>
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-xs font-medium text-muted-foreground">Description</label>
+                                    <textarea
+                                        value={String(newProduct.description ?? '')}
+                                        onChange={(e) => setNewProduct((p) => ({ ...p, description: e.target.value }))}
+                                        placeholder="Optional product details"
+                                        className="min-h-[84px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setIsAddProductOpen(false)}>
+                                Cancel
+                            </Button>
+                            <Button onClick={onCreateProduct}>
+                                <Plus className="mr-2 h-4 w-4" />
+                                Add Product
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                <Dialog open={!!detailsProduct} onOpenChange={(open) => { if (!open) setDetailsProduct(null); }}>
+                    <DialogContent className="sm:max-w-3xl">
+                        <DialogHeader>
+                            <DialogTitle className="flex items-center gap-2">
+                                <Info className="h-5 w-5" />
+                                Product Details
+                            </DialogTitle>
+                        </DialogHeader>
+
+                        {detailsProduct && (
+                            <div className="grid gap-4 lg:grid-cols-2">
+                                <div className="rounded-lg bg-muted p-6">
+                                    <div className="flex items-center justify-center">
+                                        {productImageUrl(detailsProduct.image_path) ? (
+                                            <img
+                                                src={productImageUrl(detailsProduct.image_path) ?? undefined}
+                                                alt={detailsProduct.name}
+                                                className="h-56 w-full max-w-sm rounded-xl object-cover border"
+                                            />
+                                        ) : (
+                                            <div className="h-40 w-full max-w-sm rounded-xl bg-orange-100 flex items-center justify-center dark:bg-orange-950">
+                                                <Package className="h-10 w-10 text-orange-600" />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {String(detailsProduct.description ?? '').trim().length > 0 && (
+                                        <div className="mt-4 rounded-lg border bg-muted/20 p-3">
+                                            <div className="text-xs font-medium text-muted-foreground mb-1">Description</div>
+                                            <div className="text-sm text-muted-foreground whitespace-pre-wrap">
+                                                {detailsProduct.description}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="space-y-3">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-sm text-muted-foreground">Name</span>
+                                        <span className="text-sm font-medium">{detailsProduct.name}</span>
+                                    </div>
+                                    <div className="border-t" />
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-sm text-muted-foreground">SKU</span>
+                                        <span className="text-sm font-mono font-medium">{detailsProduct.sku}</span>
+                                    </div>
+                                    <div className="border-t" />
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-sm text-muted-foreground">Product ID</span>
+                                        <span className="text-sm font-mono font-medium">{detailsProduct.id}</span>
+                                    </div>
+                                    <div className="border-t" />
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-sm text-muted-foreground">Category</span>
+                                        <Badge variant="outline">{detailsProduct.category}</Badge>
+                                    </div>
+                                    <div className="border-t" />
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-sm text-muted-foreground">Price</span>
+                                        <span className="text-sm font-semibold text-primary">{peso(detailsProduct.price)}</span>
+                                    </div>
+                                    <div className="border-t" />
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-sm text-muted-foreground">Stock</span>
+                                        {stockBadge(detailsProduct.stock)}
+                                    </div>
+                                    <div className="border-t" />
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-sm text-muted-foreground">Restocking Level</span>
+                                        {Number(detailsProduct.restocking_level) > 0 ? (
+                                            <span className="text-sm font-medium">{Number(detailsProduct.restocking_level)}</span>
+                                        ) : (
+                                            <span className="text-sm text-muted-foreground">No alert</span>
+                                        )}
+                                    </div>
+                                    <div className="border-t" />
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-sm text-muted-foreground">Stock Value</span>
+                                        <span className="text-sm font-semibold">{peso((Number(detailsProduct.price) || 0) * detailsProduct.stock)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        <DialogFooter>
+                            <Button
+                                variant="outline"
+                                onClick={() => {
+                                    if (detailsProduct) {
+                                        openBarcodeDialog(detailsProduct);
+                                        setDetailsProduct(null);
+                                    }
+                                }}
+                            >
+                                <Barcode className="mr-2 h-4 w-4" />
+                                Generate Barcode
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                {/* ---- Barcode Generation Dialog ---- */}
+            <Dialog open={!!barcodeProduct} onOpenChange={(open) => { if (!open) closeBarcodeDialog(); }}>
+                <DialogContent className="sm:max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Barcode className="h-5 w-5" />
+                            Generate Barcodes
+                        </DialogTitle>
+                        <DialogDescription>
+                            Generate printable barcodes for <span className="font-semibold text-foreground">{barcodeProduct?.name}</span>
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4">
+                        <div className="flex items-center gap-3 rounded-lg border bg-muted/50 p-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-950">
+                                <Package className="h-5 w-5 text-orange-600" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                                <div className="font-medium text-sm">{barcodeProduct?.name}</div>
+                                <div className="text-xs text-muted-foreground">
+                                    SKU: {barcodeProduct?.sku} • Barcode: {barcodeProduct?.barcode_value ?? barcodeProduct?.sku ?? barcodeProduct?.id} • {peso(barcodeProduct?.price ?? 0)}
+                                </div>
+                            </div>
+                            <Badge variant="outline">CODE128</Badge>
+                        </div>
+
+                        <div className="flex items-center justify-between rounded-lg border p-3">
+                            <div>
+                                <div className="text-sm font-medium">Number of Barcodes</div>
+                                <div className="text-xs text-muted-foreground">How many barcode labels to generate</div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setBarcodeQty(q => Math.max(1, q - 1))} disabled={barcodeQty <= 1}>
+                                    <Minus className="h-3.5 w-3.5" />
+                                </Button>
+                                <Input type="number" min={1} max={100} value={barcodeQty} onChange={(e) => setBarcodeQty(Math.max(1, Math.min(100, Number(e.target.value) || 1)))} className="h-8 w-16 text-center" />
+                                <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setBarcodeQty(q => Math.min(100, q + 1))} disabled={barcodeQty >= 100}>
+                                    <Plus className="h-3.5 w-3.5" />
+                                </Button>
+                            </div>
+                        </div>
+
+                        {!barcodesGenerated && (
+                            <Button onClick={generateBarcodes} className="w-full">
+                                <Barcode className="mr-2 h-4 w-4" />
+                                Generate {barcodeQty} Barcode{barcodeQty > 1 ? 's' : ''}
+                            </Button>
+                        )}
+
+                        <div ref={barcodeContainerRef} className="flex flex-wrap gap-3 justify-center max-h-64 overflow-auto rounded-lg border bg-white p-4 dark:bg-zinc-950" style={{ minHeight: barcodesGenerated ? '120px' : '0' }} />
+
+                        {!barcodesGenerated && (
+                            <div className="flex flex-col items-center justify-center py-4 text-muted-foreground">
+                                <Barcode className="h-10 w-10 mb-2 opacity-30" />
+                                <span className="text-sm">Set quantity and click generate to preview barcodes</span>
+                            </div>
+                        )}
+                    </div>
+
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        {barcodesGenerated && (
+                            <>
+                                <Button variant="outline" onClick={generateBarcodes}>
+                                    <Barcode className="mr-2 h-4 w-4" />
+                                    Regenerate
+                                </Button>
+                                <Button onClick={printBarcodes}>
+                                    <Printer className="mr-2 h-4 w-4" />
+                                    Print Barcodes
+                                </Button>
+                            </>
+                        )}
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* ---- Edit Product Dialog ---- */}
+            <Dialog
+                open={isEditProductOpen}
+                onOpenChange={(open) => {
+                    setIsEditProductOpen(open);
+                    if (!open) {
+                        setEditProduct(null);
+                        setEditProductImage(null);
+                        if (editProductImagePreviewUrl) {
+                            URL.revokeObjectURL(editProductImagePreviewUrl);
+                        }
+                        setEditProductImagePreviewUrl(null);
+                    }
+                }}
+            >
+                <DialogContent className="sm:max-w-3xl">
+                    <DialogHeader>
+                        <DialogTitle>Edit Product</DialogTitle>
+                        <DialogDescription>Update product details.</DialogDescription>
+                    </DialogHeader>
+
+                    {editProduct && (
+                        <div className="grid gap-4 lg:grid-cols-2">
+                            <div className="rounded-lg bg-muted p-6">
+                                <div className="flex items-center justify-center">
+                                    {editProductImagePreviewUrl || productImageUrl(editProduct.image_path) ? (
+                                        <img
+                                            src={(editProductImagePreviewUrl ?? productImageUrl(editProduct.image_path)) ?? undefined}
+                                            alt={editProduct.name}
+                                            className="h-56 w-full max-w-sm rounded-xl object-cover border"
+                                        />
+                                    ) : (
+                                        <div className="h-40 w-full max-w-sm rounded-xl bg-orange-100 flex items-center justify-center dark:bg-orange-950">
+                                            <Package className="h-10 w-10 text-orange-600" />
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="mt-4 space-y-1">
+                                    <label className="text-xs font-medium text-muted-foreground">Change product image</label>
+                                    <Input
+                                        type="file"
+                                        accept="image/*"
+                                        onChange={(e) => {
+                                            const file = e.target.files?.[0] ?? null;
+
+                                            if (editProductImagePreviewUrl) {
+                                                URL.revokeObjectURL(editProductImagePreviewUrl);
+                                            }
+
+                                            setEditProductImage(file);
+                                            setEditProductImagePreviewUrl(file ? URL.createObjectURL(file) : null);
+                                        }}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid gap-3">
+                                <div className="space-y-1">
+                                    <label className="text-xs font-medium text-muted-foreground">Status</label>
+                                    <Select
+                                        value={String(editProduct.status ?? 'active')}
+                                        onValueChange={(value: any) =>
+                                            setEditProduct((p) =>
+                                                p
+                                                    ? ({
+                                                        ...p,
+                                                        status: value,
+                                                        defect_reason: value === 'defective' ? p.defect_reason : null,
+                                                    })
+                                                    : p
+                                            )
+                                        }
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select status" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="active">Active</SelectItem>
+                                            <SelectItem value="defective">Defective</SelectItem>
+                                            <SelectItem value="out_of_stock">Out of stock</SelectItem>
+                                            <SelectItem value="reserved">Reserved</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                {String(editProduct.status ?? 'active') === 'defective' && (
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-muted-foreground">
+                                            Defect reason <span className="text-destructive">*</span>
+                                        </label>
+                                        <textarea
+                                            value={String(editProduct.defect_reason ?? '')}
+                                            onChange={(e) => setEditProduct((p) => (p ? ({ ...p, defect_reason: e.target.value }) : p))}
+                                            placeholder="Describe the issue (required)"
+                                            className="min-h-[84px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                        />
+                                    </div>
+                                )}
+
+                                <div className="space-y-1">
+                                    <label className="text-xs font-medium text-muted-foreground">Category</label>
+                                    <Select
+                                        value={editProduct.category}
+                                        onValueChange={(value: any) => setEditProduct((p) => (p ? ({ ...p, category: value }) : p))}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select category" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {categories.filter((c) => c !== 'All').map((c) => (
+                                                <SelectItem key={c} value={c}>
+                                                    {c}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-muted-foreground">
+                                            SKU <span className="text-destructive">*</span>
+                                        </label>
+                                        <Input
+                                            value={editProduct.sku}
+                                            onChange={(e) => setEditProduct((p) => (p ? ({ ...p, sku: e.target.value }) : p))}
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-muted-foreground">
+                                            Product name <span className="text-destructive">*</span>
+                                        </label>
+                                        <Input
+                                            value={editProduct.name}
+                                            onChange={(e) => setEditProduct((p) => (p ? ({ ...p, name: e.target.value }) : p))}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-muted-foreground">Unit price (₱)</label>
+                                        <Input
+                                            type="number"
+                                            value={Number(editProduct.price) || 0}
+                                            onChange={(e) => setEditProduct((p) => (p ? ({ ...p, price: Number(e.target.value) || 0 }) : p))}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-xs font-medium text-muted-foreground">Restocking Level</label>
+                                    <Input
+                                        type="number"
+                                        value={Number(editProduct.restocking_level) || 0}
+                                        onChange={(e) => setEditProduct((p) => (p ? ({ ...p, restocking_level: Number(e.target.value) || 0 }) : p))}
+                                    />
+                                    <div className="text-[11px] text-muted-foreground">
+                                        Alert will show when stock falls to or below this number (0 = no alert)
+                                    </div>
+                                </div>
+
+                                <div className="space-y-1">
+                                    <label className="text-xs font-medium text-muted-foreground">Description</label>
+                                    <textarea
+                                        value={String(editProduct.description ?? '')}
+                                        onChange={(e) => setEditProduct((p) => (p ? ({ ...p, description: e.target.value }) : p))}
+                                        placeholder="Optional product details"
+                                        className="min-h-[84px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsEditProductOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button onClick={onUpdateProduct}>
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Save Changes
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+            </div>
+        </AppLayout>
+    );
+}
+
+// ---- Grid Card ----
+function ProductCardGrid({
+    product,
+    onGenerateBarcode,
+    onViewDetails,
+    onEdit,
+    onDelete,
+    branch,
+}: {
+    product: Product;
+    onGenerateBarcode: (p: Product) => void;
+    onViewDetails: (p: Product) => void;
+    onEdit: (p: Product) => void;
+    onDelete: (p: Product) => void;
+    branch: 'all' | 'lagonglong' | 'balingasag';
+}) {
+    const status = getStockStatus(product.stock);
+    const restockingLevel = Number(product.restocking_level) || 0;
+    const showLowStock = restockingLevel > 0 && product.stock <= restockingLevel;
+
+    return (
+        <div className="group relative overflow-hidden rounded-xl border bg-card text-left shadow-sm hover:shadow-md transition-all duration-200">
+            {/* Dropdown */}
+            <div className="absolute top-1.5 right-1.5 z-10">
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <button className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-background/80 backdrop-blur-sm text-muted-foreground shadow-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-background hover:text-foreground">
+                            <MoreVertical className="h-4 w-4" />
+                        </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                        <DropdownMenuItem onClick={() => onViewDetails(product)}>
+                            <Eye className="h-4 w-4" />
+                            View Details
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => onEdit(product)}>
+                            <Pencil className="h-4 w-4" />
+                            Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => onGenerateBarcode(product)}>
+                            <Barcode className="h-4 w-4" />
+                            Generate Barcode
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem className="text-red-600" onClick={() => onDelete(product)}>
+                            <Trash2 className="h-4 w-4" />
+                            Remove
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
+            </div>
+
+            {/* Stock indicator */}
+            {status !== 'ok' && (
+                <div className="absolute top-1.5 left-1.5 z-10">
+                    {status === 'out' && <Badge variant="destructive" className="text-[9px] px-1.5 py-0">Out</Badge>}
+                    {status === 'critical' && <Badge variant="destructive" className="text-[9px] px-1.5 py-0">Low</Badge>}
+                    {status === 'low' && <Badge className="text-[9px] px-1.5 py-0 bg-orange-500 hover:bg-orange-600">Low</Badge>}
+                </div>
+            )}
+
+            <div className={`aspect-square w-full bg-muted relative overflow-hidden ${status === 'out' ? 'opacity-50' : ''}`}>
+                <div className="absolute inset-0 bg-gradient-to-br from-orange-100 to-orange-200 opacity-20" />
+                {productImageUrl(product.image_path) ? (
+                    <img
+                        src={productImageUrl(product.image_path) ?? undefined}
+                        alt={product.name}
+                        className="absolute inset-0 h-full w-full object-cover"
+                        loading="lazy"
+                    />
+                ) : (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="h-12 w-12 rounded-lg bg-orange-100 flex items-center justify-center dark:bg-orange-950">
+                            <Package className="h-6 w-6 text-orange-600" />
+                        </div>
+                    </div>
+                )}
+            </div>
+            <div className="p-3">
+                <div className="truncate text-xs font-semibold group-hover:text-primary transition-colors">
+                    {product.name}
+                </div>
+                <div className="text-[10px] text-muted-foreground font-mono mt-0.5">{product.sku}</div>
+                <div className="mt-1.5">
+                    <div className="text-xs font-semibold text-primary">{peso(product.price)}</div>
+                    <div className="mt-1 flex flex-col items-start gap-1">
+                        {showLowStock && lowStockBadge(product.stock, restockingLevel)}
+                        {stockBadge(product.stock, stockContextLabel(branch))}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ---- List Card ----
+function ProductCardList({
+    product,
+    onGenerateBarcode,
+    onViewDetails,
+    onEdit,
+    onDelete,
+    branch,
+}: {
+    product: Product;
+    onGenerateBarcode: (p: Product) => void;
+    onViewDetails: (p: Product) => void;
+    onEdit: (p: Product) => void;
+    onDelete: (p: Product) => void;
+    branch: 'all' | 'lagonglong' | 'balingasag';
+}) {
+    const status = getStockStatus(product.stock);
+    const restockingLevel = Number(product.restocking_level) || 0;
+    const showLowStock = restockingLevel > 0 && product.stock <= restockingLevel;
+
+    return (
+        <div className="group flex items-center gap-4 rounded-lg border bg-card p-3 hover:shadow-sm transition-all">
+            {/* Icon */}
+            <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-muted relative overflow-hidden ${status === 'out' ? 'opacity-50' : ''}`}>
+                <div className="absolute inset-0 bg-gradient-to-br from-orange-100 to-orange-200 opacity-20" />
+                {productImageUrl(product.image_path) ? (
+                    <img
+                        src={productImageUrl(product.image_path) ?? undefined}
+                        alt={product.name}
+                        className="absolute inset-0 h-full w-full object-cover"
+                        loading="lazy"
+                    />
+                ) : (
+                    <Package className="h-6 w-6 text-orange-600 relative z-10" />
+                )}
+            </div>
+
+            {/* Info */}
+            <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                    <span className="text-sm font-semibold truncate">{product.name}</span>
+                    <Badge variant="outline" className="text-[10px] shrink-0">{product.category}</Badge>
+                </div>
+                <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
+                    <span className="font-mono">{product.sku}</span>
+                </div>
+            </div>
+
+            {/* Price + Alerts */}
+            <div className="text-right shrink-0">
+                <div className="text-sm font-semibold text-primary">{peso(product.price)}</div>
+                <div className="mt-1 flex flex-col items-end gap-1">
+                    {showLowStock && lowStockBadge(product.stock, restockingLevel)}
+                    {stockBadge(product.stock, stockContextLabel(branch))}
+                </div>
+            </div>
+
+            {/* Actions */}
+            <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <button className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0">
+                        <MoreVertical className="h-4 w-4" />
+                    </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuItem onClick={() => onViewDetails(product)}>
+                        <Eye className="h-4 w-4" />
+                        View Details
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => onEdit(product)}>
+                        <Pencil className="h-4 w-4" />
+                        Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem onClick={() => onGenerateBarcode(product)}>
+                        <Barcode className="h-4 w-4" />
+                        Generate Barcode
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem className="text-red-600" onClick={() => onDelete(product)}>
+                        <Trash2 className="h-4 w-4" />
+                        Remove
+                    </DropdownMenuItem>
+                </DropdownMenuContent>
+            </DropdownMenu>
+        </div>
+    );
+}
