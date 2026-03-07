@@ -41,13 +41,13 @@ type Product = {
     price: number | string;
     category: string;
     stock: number;
+    defective_qty?: number;
+    total_stock?: number;
     restocking_level?: number | null;
     sku: string;
     barcode_value?: string | null;
     image_path?: string | null;
-    status?: 'active' | 'defective' | 'out_of_stock' | 'reserved';
-    defect_reason?: string | null;
-    defective_at?: string | null;
+    status?: 'active' | 'out_of_stock' | 'reserved';
 };
 
 type Paginated<T> = {
@@ -107,6 +107,53 @@ const stockBadge = (stock: number, context?: string) => {
         default:
             return <Badge variant="secondary" className="text-[10px] gap-1 text-green-600 border-green-200 bg-green-50 dark:bg-green-950/50 dark:text-green-400 dark:border-green-800"><CheckCircle className="h-3 w-3" />{text}</Badge>;
     }
+};
+
+const sellableBadge = (sellable: number, context?: string) => {
+    const status = getStockStatus(sellable);
+    const text = context ? `Sellable: ${sellable} (${context})` : `Sellable: ${sellable}`;
+    switch (status) {
+        case 'out':
+            return (
+                <Badge variant="destructive" className="text-[10px]">
+                    {text}
+                </Badge>
+            );
+        case 'critical':
+            return (
+                <Badge variant="destructive" className="text-[10px]">
+                    {text}
+                </Badge>
+            );
+        case 'low':
+            return (
+                <Badge className="text-[10px] bg-orange-500 hover:bg-orange-600">
+                    {text}
+                </Badge>
+            );
+        default:
+            return (
+                <Badge className="text-[10px] bg-emerald-600 hover:bg-emerald-700">
+                    {text}
+                </Badge>
+            );
+    }
+};
+
+const defectiveBadge = (defective: number) => {
+    if (defective > 0) {
+        return (
+            <Badge variant="destructive" className="text-[10px]">
+                Defective: {defective}
+            </Badge>
+        );
+    }
+
+    return (
+        <Badge variant="outline" className="text-[10px]">
+            Defective: 0
+        </Badge>
+    );
 };
 
 const lowStockBadge = (stock: number, restockingLevel: number) => {
@@ -188,19 +235,35 @@ export default function Products() {
 
                 if (!res.ok) return;
                 const data = await res.json();
-                const totals = new Map<number, number>();
-
+                const totals = new Map<number, { stock: number; defective: number }>();
                 for (const it of (data.items ?? []) as any[]) {
                     const id = Number(it.product_id);
                     const stock = Number(it.stock) || 0;
-                    totals.set(id, (totals.get(id) ?? 0) + stock);
+                    const defective = Number(it.defective_qty) || 0;
+                    const prev = totals.get(id) ?? { stock: 0, defective: 0 };
+                    totals.set(id, { stock: prev.stock + stock, defective: prev.defective + defective });
                 }
 
                 if (cancelled) return;
-                setAllBranchStockById(totals);
+
+                const stockTotals = new Map<number, number>();
+                const defectiveTotals = new Map<number, number>();
+                for (const [id, v] of totals.entries()) {
+                    stockTotals.set(id, v.stock);
+                    defectiveTotals.set(id, v.defective);
+                }
+
+                setAllBranchStockById(stockTotals);
 
                 const base = productsPaginator?.data ?? [];
-                setProducts(base.map((p) => ({ ...p, stock: totals.get(p.id) ?? p.stock })));
+                setProducts(
+                    base.map((p) => {
+                        const totalStock = stockTotals.get(p.id) ?? p.stock;
+                        const defectiveQty = defectiveTotals.get(p.id) ?? 0;
+                        const sellable = Math.max(0, totalStock - defectiveQty);
+                        return { ...p, stock: sellable, total_stock: totalStock, defective_qty: defectiveQty };
+                    })
+                );
             } catch {
                 // ignore
             }
@@ -214,7 +277,14 @@ export default function Products() {
     useEffect(() => {
         if (effectiveBranch === 'all') {
             const base = productsPaginator?.data ?? [];
-            setProducts(base.map((p) => ({ ...p, stock: allBranchStockById.get(p.id) ?? p.stock })));
+            setProducts(
+                base.map((p) => {
+                    const totalStock = allBranchStockById.get(p.id) ?? p.stock;
+                    const defectiveQty = Number((p as any).defective_qty ?? 0) || 0;
+                    const sellable = Math.max(0, totalStock - defectiveQty);
+                    return { ...p, stock: sellable, total_stock: totalStock, defective_qty: defectiveQty };
+                })
+            );
             return;
         }
 
@@ -233,16 +303,21 @@ export default function Products() {
                 if (!res.ok) return;
                 const data = await res.json();
 
-                const stockById = new Map<number, number>();
+                const stockById = new Map<number, { stock: number; defective: number }>();
                 for (const it of (data.items ?? []) as any[]) {
                     const id = Number(it.product_id);
-                    stockById.set(id, Number(it.stock) || 0);
+                    stockById.set(id, {
+                        stock: Number(it.stock) || 0,
+                        defective: Number(it.defective_qty) || 0,
+                    });
                 }
 
                 const base = productsPaginator?.data ?? [];
                 const merged = base.map((p) => ({
                     ...p,
-                    stock: stockById.get(p.id) ?? p.stock,
+                    stock: Math.max(0, (stockById.get(p.id)?.stock ?? p.stock) - (stockById.get(p.id)?.defective ?? 0)),
+                    total_stock: stockById.get(p.id)?.stock ?? p.stock,
+                    defective_qty: stockById.get(p.id)?.defective ?? 0,
                 }));
 
                 if (!cancelled) setProducts(merged);
@@ -258,17 +333,16 @@ export default function Products() {
 
     const [isAddProductOpen, setIsAddProductOpen] = useState(false);
     const [newProduct, setNewProduct] = useState<Omit<Product, 'id'>>({
+        sku: '',
+        barcode_value: '',
         name: '',
         description: '',
+        category: '',
         price: 0,
-        category: 'Hand Tools',
         stock: 0,
-        restocking_level: 10,
-        sku: '',
+        restocking_level: 0,
         image_path: null,
         status: 'active',
-        defect_reason: null,
-        defective_at: null,
     });
 
     const [newProductImage, setNewProductImage] = useState<File | null>(null);
@@ -432,7 +506,6 @@ export default function Products() {
         if (!sku || !name) return;
 
         const status = String(newProduct.status ?? 'active');
-        if (status === 'defective' && String(newProduct.defect_reason ?? '').trim() === '') return;
 
         const form = new FormData();
         form.append('sku', sku);
@@ -443,9 +516,6 @@ export default function Products() {
         form.append('stock', String(Number(newProduct.stock) || 0));
         form.append('restocking_level', String(Number(newProduct.restocking_level) || 0));
         form.append('status', status);
-        if (status === 'defective') {
-            form.append('defect_reason', String(newProduct.defect_reason ?? ''));
-        }
         if (newProductImage) {
             form.append('image', newProductImage);
         }
@@ -458,17 +528,16 @@ export default function Products() {
                 onSuccess: () => {
                     setIsAddProductOpen(false);
                     setNewProduct({
+                        sku: '',
+                        barcode_value: '',
                         name: '',
                         description: '',
+                        category: '',
                         price: 0,
-                        category: 'Hand Tools',
                         stock: 0,
-                        restocking_level: 10,
-                        sku: '',
+                        restocking_level: 0,
                         image_path: null,
                         status: 'active',
-                        defect_reason: null,
-                        defective_at: null,
                     });
                     setNewProductImage(null);
                 },
@@ -484,7 +553,6 @@ export default function Products() {
         if (!sku || !name) return;
 
         const status = String(editProduct.status ?? 'active');
-        if (status === 'defective' && String(editProduct.defect_reason ?? '').trim() === '') return;
 
         const form = new FormData();
         form.append('sku', sku);
@@ -494,9 +562,6 @@ export default function Products() {
         form.append('price', String(Number(editProduct.price) || 0));
         form.append('restocking_level', String(Number(editProduct.restocking_level) || 0));
         form.append('status', status);
-        if (status === 'defective') {
-            form.append('defect_reason', String(editProduct.defect_reason ?? ''));
-        }
         if (editProductImage) {
             form.append('image', editProductImage);
         }
@@ -530,6 +595,11 @@ export default function Products() {
         setStatusFilter(next);
         const url = new URL(window.location.href);
         url.searchParams.set('status', next);
+        if (effectiveBranch !== 'all') {
+            url.searchParams.set('branch_key', effectiveBranch);
+        } else {
+            url.searchParams.delete('branch_key');
+        }
         router.visit(url.toString(), { only: ['products', 'filters'], preserveScroll: true });
     };
 
@@ -792,11 +862,10 @@ export default function Products() {
                                     <label className="text-xs font-medium text-muted-foreground">Status</label>
                                     <Select
                                         value={String(newProduct.status ?? 'active')}
-                                        onValueChange={(value: any) =>
+                                        onValueChange={(value) =>
                                             setNewProduct((p) => ({
                                                 ...p,
-                                                status: value,
-                                                defect_reason: value === 'defective' ? p.defect_reason : null,
+                                                status: value as Product['status'],
                                             }))
                                         }
                                     >
@@ -805,26 +874,11 @@ export default function Products() {
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="active">Active</SelectItem>
-                                            <SelectItem value="defective">Defective</SelectItem>
                                             <SelectItem value="out_of_stock">Out of stock</SelectItem>
                                             <SelectItem value="reserved">Reserved</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
-
-                                {String(newProduct.status ?? 'active') === 'defective' && (
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-medium text-muted-foreground">
-                                            Defect reason <span className="text-destructive">*</span>
-                                        </label>
-                                        <textarea
-                                            value={String(newProduct.defect_reason ?? '')}
-                                            onChange={(e) => setNewProduct((p) => ({ ...p, defect_reason: e.target.value }))}
-                                            placeholder="Describe the issue (required)"
-                                            className="min-h-[84px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                        />
-                                    </div>
-                                )}
 
                                 <div className="space-y-1">
                                     <label className="text-xs font-medium text-muted-foreground">Category</label>
@@ -850,16 +904,10 @@ export default function Products() {
                                         <label className="text-xs font-medium text-muted-foreground">
                                             SKU <span className="text-destructive">*</span>
                                         </label>
-                                        <div className="flex gap-2">
-                                            <Input
-                                                value={newProduct.sku}
-                                                onChange={(e) => setNewProduct((p) => ({ ...p, sku: e.target.value }))}
-                                                placeholder="e.g. HT-001"
-                                            />
-                                            <Button variant="outline" onClick={generateSku} type="button">
-                                                Generate
-                                            </Button>
-                                        </div>
+                                        <Input
+                                            value={newProduct.sku}
+                                            onChange={(e) => setNewProduct((p) => ({ ...p, sku: e.target.value }))}
+                                        />
                                     </div>
                                     <div className="space-y-1">
                                         <label className="text-xs font-medium text-muted-foreground">
@@ -868,7 +916,6 @@ export default function Products() {
                                         <Input
                                             value={newProduct.name}
                                             onChange={(e) => setNewProduct((p) => ({ ...p, name: e.target.value }))}
-                                            placeholder="e.g. Measuring Tape 25ft"
                                         />
                                     </div>
                                 </div>
@@ -878,16 +925,15 @@ export default function Products() {
                                         <label className="text-xs font-medium text-muted-foreground">Unit price (₱)</label>
                                         <Input
                                             type="number"
-                                            value={newProduct.price}
+                                            value={Number(newProduct.price) || 0}
                                             onChange={(e) => setNewProduct((p) => ({ ...p, price: Number(e.target.value) || 0 }))}
-                                            placeholder="e.g. 250"
                                         />
                                     </div>
                                     <div className="space-y-1">
                                         <label className="text-xs font-medium text-muted-foreground">Initial stock</label>
                                         <Input
                                             type="number"
-                                            value={newProduct.stock}
+                                            value={Number(newProduct.stock) || 0}
                                             onChange={(e) => setNewProduct((p) => ({ ...p, stock: Number(e.target.value) || 0 }))}
                                             placeholder="e.g. 10"
                                         />
@@ -900,11 +946,7 @@ export default function Products() {
                                         type="number"
                                         value={Number(newProduct.restocking_level) || 0}
                                         onChange={(e) => setNewProduct((p) => ({ ...p, restocking_level: Number(e.target.value) || 0 }))}
-                                        placeholder="e.g. 10"
                                     />
-                                    <div className="text-[11px] text-muted-foreground">
-                                        Alert will show when stock falls to or below this number (0 = no alert)
-                                    </div>
                                 </div>
 
                                 <div className="space-y-1">
@@ -928,372 +970,6 @@ export default function Products() {
                                 Add Product
                             </Button>
                         </DialogFooter>
-                    </DialogContent>
-                </Dialog>
-
-                <Dialog open={!!detailsProduct} onOpenChange={(open) => { if (!open) setDetailsProduct(null); }}>
-                    <DialogContent className="sm:max-w-3xl">
-                        <DialogHeader>
-                            <DialogTitle className="flex items-center gap-2">
-                                <Info className="h-5 w-5" />
-                                Product Details
-                            </DialogTitle>
-                        </DialogHeader>
-
-                        {detailsProduct && (
-                            <div className="grid gap-4 lg:grid-cols-2">
-                                <div className="rounded-lg bg-muted p-6">
-                                    <div className="flex items-center justify-center">
-                                        {productImageUrl(detailsProduct.image_path) ? (
-                                            <img
-                                                src={productImageUrl(detailsProduct.image_path) ?? undefined}
-                                                alt={detailsProduct.name}
-                                                className="h-56 w-full max-w-sm rounded-xl object-cover border"
-                                            />
-                                        ) : (
-                                            <div className="h-40 w-full max-w-sm rounded-xl bg-orange-100 flex items-center justify-center dark:bg-orange-950">
-                                                <Package className="h-10 w-10 text-orange-600" />
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    {String(detailsProduct.description ?? '').trim().length > 0 && (
-                                        <div className="mt-4 rounded-lg border bg-muted/20 p-3">
-                                            <div className="text-xs font-medium text-muted-foreground mb-1">Description</div>
-                                            <div className="text-sm text-muted-foreground whitespace-pre-wrap">
-                                                {detailsProduct.description}
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="space-y-3">
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm text-muted-foreground">Name</span>
-                                        <span className="text-sm font-medium">{detailsProduct.name}</span>
-                                    </div>
-                                    <div className="border-t" />
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm text-muted-foreground">SKU</span>
-                                        <span className="text-sm font-mono font-medium">{detailsProduct.sku}</span>
-                                    </div>
-                                    <div className="border-t" />
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm text-muted-foreground">Product ID</span>
-                                        <span className="text-sm font-mono font-medium">{detailsProduct.id}</span>
-                                    </div>
-                                    <div className="border-t" />
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm text-muted-foreground">Category</span>
-                                        <Badge variant="outline">{detailsProduct.category}</Badge>
-                                    </div>
-                                    <div className="border-t" />
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm text-muted-foreground">Price</span>
-                                        <span className="text-sm font-semibold text-primary">{peso(detailsProduct.price)}</span>
-                                    </div>
-                                    <div className="border-t" />
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm text-muted-foreground">Stock</span>
-                                        {stockBadge(detailsProduct.stock)}
-                                    </div>
-                                    <div className="border-t" />
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm text-muted-foreground">Restocking Level</span>
-                                        {Number(detailsProduct.restocking_level) > 0 ? (
-                                            <span className="text-sm font-medium">{Number(detailsProduct.restocking_level)}</span>
-                                        ) : (
-                                            <span className="text-sm text-muted-foreground">No alert</span>
-                                        )}
-                                    </div>
-                                    <div className="border-t" />
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm text-muted-foreground">Stock Value</span>
-                                        <span className="text-sm font-semibold">{peso((Number(detailsProduct.price) || 0) * detailsProduct.stock)}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        <DialogFooter>
-                            <Button
-                                variant="outline"
-                                onClick={() => {
-                                    if (detailsProduct) {
-                                        openBarcodeDialog(detailsProduct);
-                                        setDetailsProduct(null);
-                                    }
-                                }}
-                            >
-                                <Barcode className="mr-2 h-4 w-4" />
-                                Generate Barcode
-                            </Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
-
-                {/* ---- Barcode Generation Dialog ---- */}
-            <Dialog open={!!barcodeProduct} onOpenChange={(open) => { if (!open) closeBarcodeDialog(); }}>
-                <DialogContent className="sm:max-w-2xl">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <Barcode className="h-5 w-5" />
-                            Generate Barcodes
-                        </DialogTitle>
-                        <DialogDescription>
-                            Generate printable barcodes for <span className="font-semibold text-foreground">{barcodeProduct?.name}</span>
-                        </DialogDescription>
-                    </DialogHeader>
-
-                    <div className="space-y-4">
-                        <div className="flex items-center gap-3 rounded-lg border bg-muted/50 p-3">
-                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-950">
-                                <Package className="h-5 w-5 text-orange-600" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                                <div className="font-medium text-sm">{barcodeProduct?.name}</div>
-                                <div className="text-xs text-muted-foreground">
-                                    SKU: {barcodeProduct?.sku} • Barcode: {barcodeProduct?.barcode_value ?? barcodeProduct?.sku ?? barcodeProduct?.id} • {peso(barcodeProduct?.price ?? 0)}
-                                </div>
-                            </div>
-                            <Badge variant="outline">CODE128</Badge>
-                        </div>
-
-                        <div className="flex items-center justify-between rounded-lg border p-3">
-                            <div>
-                                <div className="text-sm font-medium">Number of Barcodes</div>
-                                <div className="text-xs text-muted-foreground">How many barcode labels to generate</div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setBarcodeQty(q => Math.max(1, q - 1))} disabled={barcodeQty <= 1}>
-                                    <Minus className="h-3.5 w-3.5" />
-                                </Button>
-                                <Input type="number" min={1} max={100} value={barcodeQty} onChange={(e) => setBarcodeQty(Math.max(1, Math.min(100, Number(e.target.value) || 1)))} className="h-8 w-16 text-center" />
-                                <Button variant="outline" size="icon" className="h-8 w-8" onClick={() => setBarcodeQty(q => Math.min(100, q + 1))} disabled={barcodeQty >= 100}>
-                                    <Plus className="h-3.5 w-3.5" />
-                                </Button>
-                            </div>
-                        </div>
-
-                        {!barcodesGenerated && (
-                            <Button onClick={generateBarcodes} className="w-full">
-                                <Barcode className="mr-2 h-4 w-4" />
-                                Generate {barcodeQty} Barcode{barcodeQty > 1 ? 's' : ''}
-                            </Button>
-                        )}
-
-                        <div ref={barcodeContainerRef} className="flex flex-wrap gap-3 justify-center max-h-64 overflow-auto rounded-lg border bg-white p-4 dark:bg-zinc-950" style={{ minHeight: barcodesGenerated ? '120px' : '0' }} />
-
-                        {!barcodesGenerated && (
-                            <div className="flex flex-col items-center justify-center py-4 text-muted-foreground">
-                                <Barcode className="h-10 w-10 mb-2 opacity-30" />
-                                <span className="text-sm">Set quantity and click generate to preview barcodes</span>
-                            </div>
-                        )}
-                    </div>
-
-                    <DialogFooter className="gap-2 sm:gap-0">
-                        {barcodesGenerated && (
-                            <>
-                                <Button variant="outline" onClick={generateBarcodes}>
-                                    <Barcode className="mr-2 h-4 w-4" />
-                                    Regenerate
-                                </Button>
-                                <Button onClick={printBarcodes}>
-                                    <Printer className="mr-2 h-4 w-4" />
-                                    Print Barcodes
-                                </Button>
-                            </>
-                        )}
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
-
-            {/* ---- Edit Product Dialog ---- */}
-            <Dialog
-                open={isEditProductOpen}
-                onOpenChange={(open) => {
-                    setIsEditProductOpen(open);
-                    if (!open) {
-                        setEditProduct(null);
-                        setEditProductImage(null);
-                        if (editProductImagePreviewUrl) {
-                            URL.revokeObjectURL(editProductImagePreviewUrl);
-                        }
-                        setEditProductImagePreviewUrl(null);
-                    }
-                }}
-            >
-                <DialogContent className="sm:max-w-3xl">
-                    <DialogHeader>
-                        <DialogTitle>Edit Product</DialogTitle>
-                        <DialogDescription>Update product details.</DialogDescription>
-                    </DialogHeader>
-
-                    {editProduct && (
-                        <div className="grid gap-4 lg:grid-cols-2">
-                            <div className="rounded-lg bg-muted p-6">
-                                <div className="flex items-center justify-center">
-                                    {editProductImagePreviewUrl || productImageUrl(editProduct.image_path) ? (
-                                        <img
-                                            src={(editProductImagePreviewUrl ?? productImageUrl(editProduct.image_path)) ?? undefined}
-                                            alt={editProduct.name}
-                                            className="h-56 w-full max-w-sm rounded-xl object-cover border"
-                                        />
-                                    ) : (
-                                        <div className="h-40 w-full max-w-sm rounded-xl bg-orange-100 flex items-center justify-center dark:bg-orange-950">
-                                            <Package className="h-10 w-10 text-orange-600" />
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="mt-4 space-y-1">
-                                    <label className="text-xs font-medium text-muted-foreground">Change product image</label>
-                                    <Input
-                                        type="file"
-                                        accept="image/*"
-                                        onChange={(e) => {
-                                            const file = e.target.files?.[0] ?? null;
-
-                                            if (editProductImagePreviewUrl) {
-                                                URL.revokeObjectURL(editProductImagePreviewUrl);
-                                            }
-
-                                            setEditProductImage(file);
-                                            setEditProductImagePreviewUrl(file ? URL.createObjectURL(file) : null);
-                                        }}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="grid gap-3">
-                                <div className="space-y-1">
-                                    <label className="text-xs font-medium text-muted-foreground">Status</label>
-                                    <Select
-                                        value={String(editProduct.status ?? 'active')}
-                                        onValueChange={(value: any) =>
-                                            setEditProduct((p) =>
-                                                p
-                                                    ? ({
-                                                        ...p,
-                                                        status: value,
-                                                        defect_reason: value === 'defective' ? p.defect_reason : null,
-                                                    })
-                                                    : p
-                                            )
-                                        }
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select status" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="active">Active</SelectItem>
-                                            <SelectItem value="defective">Defective</SelectItem>
-                                            <SelectItem value="out_of_stock">Out of stock</SelectItem>
-                                            <SelectItem value="reserved">Reserved</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-
-                                {String(editProduct.status ?? 'active') === 'defective' && (
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-medium text-muted-foreground">
-                                            Defect reason <span className="text-destructive">*</span>
-                                        </label>
-                                        <textarea
-                                            value={String(editProduct.defect_reason ?? '')}
-                                            onChange={(e) => setEditProduct((p) => (p ? ({ ...p, defect_reason: e.target.value }) : p))}
-                                            placeholder="Describe the issue (required)"
-                                            className="min-h-[84px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                        />
-                                    </div>
-                                )}
-
-                                <div className="space-y-1">
-                                    <label className="text-xs font-medium text-muted-foreground">Category</label>
-                                    <Select
-                                        value={editProduct.category}
-                                        onValueChange={(value: any) => setEditProduct((p) => (p ? ({ ...p, category: value }) : p))}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select category" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {categories.filter((c) => c !== 'All').map((c) => (
-                                                <SelectItem key={c} value={c}>
-                                                    {c}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-medium text-muted-foreground">
-                                            SKU <span className="text-destructive">*</span>
-                                        </label>
-                                        <Input
-                                            value={editProduct.sku}
-                                            onChange={(e) => setEditProduct((p) => (p ? ({ ...p, sku: e.target.value }) : p))}
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-medium text-muted-foreground">
-                                            Product name <span className="text-destructive">*</span>
-                                        </label>
-                                        <Input
-                                            value={editProduct.name}
-                                            onChange={(e) => setEditProduct((p) => (p ? ({ ...p, name: e.target.value }) : p))}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-medium text-muted-foreground">Unit price (₱)</label>
-                                        <Input
-                                            type="number"
-                                            value={Number(editProduct.price) || 0}
-                                            onChange={(e) => setEditProduct((p) => (p ? ({ ...p, price: Number(e.target.value) || 0 }) : p))}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="space-y-1">
-                                    <label className="text-xs font-medium text-muted-foreground">Restocking Level</label>
-                                    <Input
-                                        type="number"
-                                        value={Number(editProduct.restocking_level) || 0}
-                                        onChange={(e) => setEditProduct((p) => (p ? ({ ...p, restocking_level: Number(e.target.value) || 0 }) : p))}
-                                    />
-                                    <div className="text-[11px] text-muted-foreground">
-                                        Alert will show when stock falls to or below this number (0 = no alert)
-                                    </div>
-                                </div>
-
-                                <div className="space-y-1">
-                                    <label className="text-xs font-medium text-muted-foreground">Description</label>
-                                    <textarea
-                                        value={String(editProduct.description ?? '')}
-                                        onChange={(e) => setEditProduct((p) => (p ? ({ ...p, description: e.target.value }) : p))}
-                                        placeholder="Optional product details"
-                                        className="min-h-[84px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-                    )}
-
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setIsEditProductOpen(false)}>
-                            Cancel
-                        </Button>
-                        <Button onClick={onUpdateProduct}>
-                            <Pencil className="mr-2 h-4 w-4" />
-                            Save Changes
-                        </Button>
-                    </DialogFooter>
                 </DialogContent>
             </Dialog>
             </div>
@@ -1320,6 +996,9 @@ function ProductCardGrid({
     const status = getStockStatus(product.stock);
     const restockingLevel = Number(product.restocking_level) || 0;
     const showLowStock = restockingLevel > 0 && product.stock <= restockingLevel;
+
+    const totalStock = Number(product.total_stock ?? product.stock) || 0;
+    const defectiveQty = Number(product.defective_qty ?? 0) || 0;
 
     return (
         <div className="group relative overflow-hidden rounded-xl border bg-card text-left shadow-sm hover:shadow-md transition-all duration-200">
@@ -1388,7 +1067,8 @@ function ProductCardGrid({
                     <div className="text-xs font-semibold text-primary">{peso(product.price)}</div>
                     <div className="mt-1 flex flex-col items-start gap-1">
                         {showLowStock && lowStockBadge(product.stock, restockingLevel)}
-                        {stockBadge(product.stock, stockContextLabel(branch))}
+                        {sellableBadge(product.stock, stockContextLabel(branch))}
+                        {defectiveBadge(defectiveQty)}
                     </div>
                 </div>
             </div>
@@ -1415,6 +1095,9 @@ function ProductCardList({
     const status = getStockStatus(product.stock);
     const restockingLevel = Number(product.restocking_level) || 0;
     const showLowStock = restockingLevel > 0 && product.stock <= restockingLevel;
+
+    const totalStock = Number(product.total_stock ?? product.stock) || 0;
+    const defectiveQty = Number(product.defective_qty ?? 0) || 0;
 
     return (
         <div className="group flex items-center gap-4 rounded-lg border bg-card p-3 hover:shadow-sm transition-all">
@@ -1449,7 +1132,8 @@ function ProductCardList({
                 <div className="text-sm font-semibold text-primary">{peso(product.price)}</div>
                 <div className="mt-1 flex flex-col items-end gap-1">
                     {showLowStock && lowStockBadge(product.stock, restockingLevel)}
-                    {stockBadge(product.stock, stockContextLabel(branch))}
+                    {sellableBadge(product.stock, stockContextLabel(branch))}
+                    {defectiveBadge(defectiveQty)}
                 </div>
             </div>
 

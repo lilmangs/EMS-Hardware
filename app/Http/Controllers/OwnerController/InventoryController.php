@@ -72,6 +72,8 @@ class InventoryController extends Controller
                     'image_path' => $p->image_path,
                     'branch_key' => $bk,
                     'stock' => $ps?->stock ?? (int) ($p->stock ?? 0),
+                    'defective_qty' => $ps?->defective_qty ?? 0,
+                    'sellable_qty' => max(0, (int) ($ps?->stock ?? (int) ($p->stock ?? 0)) - (int) ($ps?->defective_qty ?? 0)),
                     'reorder_level' => $ps?->reorder_level ?? 0,
                     'min_stock' => $ps?->min_stock ?? 0,
                     'max_stock' => $ps?->max_stock ?? 0,

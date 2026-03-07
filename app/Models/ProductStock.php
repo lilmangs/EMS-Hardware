@@ -10,6 +10,7 @@ class ProductStock extends Model
         'product_id',
         'branch_key',
         'stock',
+        'defective_qty',
         'reorder_level',
         'min_stock',
         'max_stock',
@@ -17,6 +18,7 @@ class ProductStock extends Model
 
     protected $casts = [
         'stock' => 'integer',
+        'defective_qty' => 'integer',
         'reorder_level' => 'integer',
         'min_stock' => 'integer',
         'max_stock' => 'integer',

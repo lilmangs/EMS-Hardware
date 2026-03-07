@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\CashierController;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
+use App\Models\ProductStock;
 use Inertia\Inertia;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -14,6 +15,19 @@ class ProductsController extends Controller
     {
         $query = Product::query();
 
+        $user = request()->user();
+        $userBranchKey = $user?->branch_key;
+        $isBranchRestrictedUser = $user && in_array($user->role, ['staff', 'cashier', 'delivery'], true) && !empty($userBranchKey);
+
+        $branchKey = request('branch_key');
+        if ($isBranchRestrictedUser) {
+            $branchKey = $userBranchKey;
+        }
+
+        if (!is_string($branchKey) || trim($branchKey) === '') {
+            $branchKey = null;
+        }
+
         $status = request('status', 'active');
         if (!is_string($status) || trim($status) === '') {
             $status = 'active';
@@ -24,7 +38,16 @@ class ProductsController extends Controller
             $status = 'active';
         }
 
-        $query->where('status', $status);
+        if ($status === 'defective') {
+            $query->whereHas('stocks', function ($q) use ($branchKey) {
+                if (is_string($branchKey) && $branchKey !== '') {
+                    $q->where('branch_key', $branchKey);
+                }
+                $q->where('defective_qty', '>', 0);
+            });
+        } else {
+            $query->where('status', $status);
+        }
 
         $search = request('search');
         if (is_string($search) && trim($search) !== '') {
@@ -58,6 +81,7 @@ class ProductsController extends Controller
             'filters' => [
                 'search' => $search,
                 'status' => $status,
+                'branch_key' => $branchKey,
                 'sort' => $sort,
                 'direction' => $direction,
             ],
@@ -75,25 +99,12 @@ class ProductsController extends Controller
             'price' => ['required', 'numeric', 'min:0'],
             'stock' => ['required', 'integer', 'min:0'],
             'restocking_level' => ['nullable', 'integer', 'min:0'],
-            'status' => ['nullable', Rule::in(['active', 'defective', 'out_of_stock', 'reserved'])],
-            'defect_reason' => ['nullable', 'string', 'max:2000'],
+            'status' => ['nullable', Rule::in(['active', 'out_of_stock', 'reserved'])],
             'image' => ['nullable', 'image', 'max:4096'],
         ]);
 
         if (!array_key_exists('status', $validated) || $validated['status'] === null || trim((string) $validated['status']) === '') {
             $validated['status'] = 'active';
-        }
-
-        if ($validated['status'] === 'defective') {
-            if (!array_key_exists('defect_reason', $validated) || $validated['defect_reason'] === null || trim((string) $validated['defect_reason']) === '') {
-                abort(422, 'Defect reason is required when marking a product as defective.');
-            }
-            $validated['defective_at'] = now();
-            $validated['defective_by'] = $request->user()?->id;
-        } else {
-            $validated['defect_reason'] = null;
-            $validated['defective_at'] = null;
-            $validated['defective_by'] = null;
         }
 
         if (!array_key_exists('restocking_level', $validated) || $validated['restocking_level'] === null) {
@@ -108,7 +119,15 @@ class ProductsController extends Controller
             $validated['image_path'] = $request->file('image')->store('products', 'public');
         }
 
-        Product::create($validated);
+        $product = Product::create($validated);
+
+        $branchKey = $request->user()?->branch_key;
+        if (is_string($branchKey) && trim($branchKey) !== '') {
+            ProductStock::updateOrCreate(
+                ['product_id' => $product->id, 'branch_key' => $branchKey],
+                ['stock' => (int) $validated['stock'], 'defective_qty' => 0]
+            );
+        }
 
         return back();
     }
@@ -124,8 +143,7 @@ class ProductsController extends Controller
             'price' => ['required', 'numeric', 'min:0'],
             'stock' => ['nullable', 'integer', 'min:0'],
             'restocking_level' => ['nullable', 'integer', 'min:0'],
-            'status' => ['nullable', Rule::in(['active', 'defective', 'out_of_stock', 'reserved'])],
-            'defect_reason' => ['nullable', 'string', 'max:2000'],
+            'status' => ['nullable', Rule::in(['active', 'out_of_stock', 'reserved'])],
             'image' => ['nullable', 'image', 'max:4096'],
         ]);
 
@@ -139,21 +157,6 @@ class ProductsController extends Controller
 
         if (!array_key_exists('status', $validated) || $validated['status'] === null || trim((string) $validated['status']) === '') {
             $validated['status'] = $product->status ?? 'active';
-        }
-
-        if ($validated['status'] === 'defective') {
-            if (!array_key_exists('defect_reason', $validated) || $validated['defect_reason'] === null || trim((string) $validated['defect_reason']) === '') {
-                abort(422, 'Defect reason is required when marking a product as defective.');
-            }
-
-            if (($product->status ?? 'active') !== 'defective') {
-                $validated['defective_at'] = now();
-                $validated['defective_by'] = $request->user()?->id;
-            }
-        } else {
-            $validated['defect_reason'] = null;
-            $validated['defective_at'] = null;
-            $validated['defective_by'] = null;
         }
 
         // If barcode_value not provided, keep existing unless it was just mirroring the old SKU.

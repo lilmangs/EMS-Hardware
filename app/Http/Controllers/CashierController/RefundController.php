@@ -12,6 +12,7 @@ use App\Models\ProductStock;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class RefundController extends Controller
@@ -26,6 +27,7 @@ class RefundController extends Controller
             $recentRefunds = PosRefund::query()
                 ->where('branch_key', $branchKey)
                 ->where('processed_by_user_id', $user?->id)
+                ->whereIn('status', ['approved', 'rejected'])
                 ->with(['items:id,pos_refund_id,name,qty,amount', 'sale:id,ref'])
                 ->latest()
                 ->limit(20)
@@ -38,6 +40,7 @@ class RefundController extends Controller
                         'status' => $r->status,
                         'amount' => $r->amount,
                         'reason' => $r->reason,
+                        'restock' => (bool) $r->restock,
                         'created_at' => $r->created_at,
                         'items' => $r->items->map(fn ($it) => [
                             'name' => $it->name,
@@ -130,6 +133,7 @@ class RefundController extends Controller
 
         $validated = $request->validate([
             'sale_ref' => ['required', 'string', 'max:50'],
+            'condition' => ['nullable', Rule::in(['resellable', 'defective'])],
             'reason' => ['required', 'string', 'max:1000'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.pos_sale_item_id' => ['required', 'integer', 'exists:pos_sale_items,id'],
@@ -184,16 +188,16 @@ class RefundController extends Controller
             substr(str_replace('.', '', (string) microtime(true)), -6)
         );
 
-        $reasonText = strtolower(trim((string) ($validated['reason'] ?? '')));
-        $restock = !($reasonText !== '' && (
-            str_contains($reasonText, 'damaged') ||
-            str_contains($reasonText, 'defective') ||
-            str_contains($reasonText, 'consumable')
-        ));
+        $condition = $validated['condition'] ?? 'resellable';
+        if (!is_string($condition) || trim($condition) === '') {
+            $condition = 'resellable';
+        }
+
+        $restock = $condition === 'resellable';
 
         $refundId = null;
 
-        DB::transaction(function () use ($requested, $saleItemsById, $alreadyRefunded, $branchKey, $user, $sale, $validated, $refundRef, $restock, &$refundId) {
+        DB::transaction(function () use ($requested, $saleItemsById, $alreadyRefunded, $branchKey, $user, $sale, $validated, $refundRef, $restock, $condition, &$refundId) {
             $amount = 0.0;
 
             foreach ($requested as $req) {
@@ -246,9 +250,8 @@ class RefundController extends Controller
                 ]);
             }
 
-            if (!(bool) $refund->restock) {
-                return;
-            }
+            // Always return items to branch stock totals.
+            // If condition is defective, we return them as defective units (not sellable).
 
             $alreadyAdjusted = InventoryAdjustment::query()
                 ->where('reference_id', $refund->id)
@@ -287,7 +290,14 @@ class RefundController extends Controller
 
                 $before = (int) $stock->stock;
                 $after = $before + $qty;
-                $stock->update(['stock' => $after]);
+
+                $update = ['stock' => $after];
+                if ($condition === 'defective') {
+                    $defectiveBefore = (int) ($stock->defective_qty ?? 0);
+                    $update['defective_qty'] = $defectiveBefore + $qty;
+                }
+
+                $stock->update($update);
 
                 InventoryAdjustment::create([
                     'product_id' => $productId,

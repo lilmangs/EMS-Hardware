@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
     Dialog,
     DialogContent,
@@ -23,7 +24,9 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ];
 
-type RefundStatus = 'pending' | 'approved' | 'rejected';
+type RefundStatus = 'approved' | 'rejected';
+
+type RefundCondition = 'resellable' | 'defective';
 
 type RefundableSaleItem = {
     id: number;
@@ -51,6 +54,7 @@ type RecentRefund = {
     status: RefundStatus;
     amount: number | string;
     reason: string | null;
+    restock?: boolean;
     created_at: string;
     items: Array<{ name: string; qty: number; amount: number | string }>;
 };
@@ -70,16 +74,6 @@ function formatDateTime(iso: string) {
 }
 
 function statusBadge(s: RefundStatus) {
-    if (s === 'pending') {
-        return (
-            <Badge
-                variant="secondary"
-                className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800"
-            >
-                Pending
-            </Badge>
-        );
-    }
     if (s === 'approved') {
         return (
             <Badge
@@ -100,6 +94,28 @@ function statusBadge(s: RefundStatus) {
     );
 }
 
+function restockBadge(restock?: boolean) {
+    if (restock === true) {
+        return (
+            <Badge
+                variant="secondary"
+                className="bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/30 dark:text-sky-300 dark:border-sky-800"
+            >
+                Restock
+            </Badge>
+        );
+    }
+
+    return (
+        <Badge
+            variant="secondary"
+            className="bg-muted text-muted-foreground border-border"
+        >
+            No restock
+        </Badge>
+    );
+}
+
 export default function Refund() {
     const { props } = usePage<{ branch_key: string | null; recent_refunds: RecentRefund[] }>();
     const branchKey = props.branch_key;
@@ -109,6 +125,7 @@ export default function Refund() {
     const [sale, setSale] = useState<RefundableSale | null>(null);
     const [selectedQty, setSelectedQty] = useState<Record<number, number>>({});
     const [reason, setReason] = useState('');
+    const [condition, setCondition] = useState<RefundCondition>('resellable');
 
     const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
 
@@ -213,6 +230,7 @@ export default function Refund() {
                 credentials: 'same-origin',
                 body: JSON.stringify({
                     sale_ref: sale.ref,
+                    condition,
                     reason: reason.trim(),
                     items,
                 }),
@@ -223,6 +241,7 @@ export default function Refund() {
 
             setSuccess(`Refund created: ${json?.ref ?? ''}`.trim());
             setReason('');
+            setCondition('resellable');
             setIsRefundModalOpen(false);
             await lookupSale({ openModal: false });
             router.reload({ only: ['recent_refunds'] });
@@ -231,7 +250,7 @@ export default function Refund() {
         } finally {
             setIsSubmitting(false);
         }
-    }, [lookupSale, reason, sale, selectedQty]);
+    }, [condition, lookupSale, reason, sale, selectedQty]);
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -239,7 +258,7 @@ export default function Refund() {
             <div className="space-y-6 p-6">
                 <div className="flex flex-col gap-1">
                     <h1 className="text-3xl font-bold">Refund</h1>
-                    <p className="text-muted-foreground">Lookup a sale and create a refund request</p>
+                    <p className="text-muted-foreground">Lookup a sale and process a refund</p>
                 </div>
 
                 {!!error && (
@@ -384,6 +403,19 @@ export default function Refund() {
                                 <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Defective product" />
                             </div>
 
+                            <div className="grid gap-2">
+                                <div className="text-xs font-medium text-muted-foreground">Condition</div>
+                                <Select value={condition} onValueChange={(v) => setCondition(v as RefundCondition)}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select condition" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="resellable">Resellable (Restock)</SelectItem>
+                                        <SelectItem value="defective">Defective (No restock)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
                             <div className="flex flex-col gap-3 border-t pt-4 md:flex-row md:items-center md:justify-between">
                                 <div className="text-sm text-muted-foreground">
                                     Selected total
@@ -408,45 +440,47 @@ export default function Refund() {
                 </DialogContent>
             </Dialog>
 
-            <Card>
-                <CardHeader className="space-y-1">
-                    <CardTitle>Recent Refunds</CardTitle>
-                    <CardDescription>Latest refund requests you created.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <Table>
-                        <TableHeader>
-                            <TableRow>
-                                <TableHead>Refund Ref</TableHead>
-                                <TableHead>Sale Ref</TableHead>
-                                <TableHead>Status</TableHead>
-                                <TableHead className="text-right">Amount</TableHead>
-                                <TableHead>Reason</TableHead>
-                                <TableHead>Date</TableHead>
-                            </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                            {recentRefunds.map((r) => (
-                                <TableRow key={r.id}>
-                                    <TableCell className="font-medium">{r.ref}</TableCell>
-                                    <TableCell className="text-muted-foreground">{r.sale_ref ?? '—'}</TableCell>
-                                    <TableCell>{statusBadge(r.status)}</TableCell>
-                                    <TableCell className="text-right font-medium">{peso(r.amount)}</TableCell>
-                                    <TableCell className="max-w-[320px] truncate" title={r.reason ?? ''}>{r.reason ?? '—'}</TableCell>
-                                    <TableCell className="text-muted-foreground">{formatDateTime(r.created_at)}</TableCell>
-                                </TableRow>
-                            ))}
-                            {!recentRefunds.length && (
+                <Card>
+                    <CardHeader className="space-y-1">
+                        <CardTitle>Recent Refunds</CardTitle>
+                        <CardDescription>Latest refunds you processed.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <Table>
+                            <TableHeader>
                                 <TableRow>
-                                    <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
-                                        No refunds yet.
-                                    </TableCell>
+                                    <TableHead>Refund Ref</TableHead>
+                                    <TableHead>Sale Ref</TableHead>
+                                    <TableHead>Status</TableHead>
+                                    <TableHead>Inventory</TableHead>
+                                    <TableHead className="text-right">Amount</TableHead>
+                                    <TableHead>Reason</TableHead>
+                                    <TableHead>Date</TableHead>
                                 </TableRow>
-                            )}
-                        </TableBody>
-                    </Table>
-                </CardContent>
-            </Card>
+                            </TableHeader>
+                            <TableBody>
+                                {recentRefunds.map((r) => (
+                                    <TableRow key={r.id}>
+                                        <TableCell className="font-medium">{r.ref}</TableCell>
+                                        <TableCell className="text-muted-foreground">{r.sale_ref ?? '—'}</TableCell>
+                                        <TableCell>{statusBadge(r.status)}</TableCell>
+                                        <TableCell>{restockBadge(r.restock)}</TableCell>
+                                        <TableCell className="text-right font-medium">{peso(r.amount)}</TableCell>
+                                        <TableCell className="max-w-[320px] truncate" title={r.reason ?? ''}>{r.reason ?? '—'}</TableCell>
+                                        <TableCell className="text-muted-foreground">{formatDateTime(r.created_at)}</TableCell>
+                                    </TableRow>
+                                ))}
+                                {!recentRefunds.length && (
+                                    <TableRow>
+                                        <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                                            No refunds yet.
+                                        </TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
+                    </CardContent>
+                </Card>
             </div>
         </AppLayout>
     );

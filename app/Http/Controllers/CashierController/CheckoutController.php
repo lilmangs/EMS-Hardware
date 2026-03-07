@@ -38,14 +38,12 @@ class CheckoutController extends Controller
 
     $stocks = ProductStock::query()
       ->where('branch_key', $branchKey)
-      ->whereHas('product', function ($q) {
-        $q->where('status', 'active');
-      })
-      ->with(['product:id,sku,barcode_value,name,price,image_path,status'])
+      ->with(['product:id,sku,barcode_value,name,price,image_path'])
       ->get();
 
     $products = $stocks
       ->map(function (ProductStock $ps) {
+        $sellable = max(0, ((int) $ps->stock) - ((int) ($ps->defective_qty ?? 0)));
         return [
           'id' => $ps->product_id,
           'sku' => $ps->product?->sku,
@@ -53,7 +51,7 @@ class CheckoutController extends Controller
           'name' => $ps->product?->name,
           'price' => $ps->product?->price,
           'image_path' => $ps->product?->image_path,
-          'stock' => (int) $ps->stock,
+          'stock' => $sellable,
         ];
       })
       ->filter(fn ($p) => !empty($p['name']))
@@ -145,17 +143,6 @@ class CheckoutController extends Controller
     $productIds = collect($items)->pluck('product_id')->unique()->values();
     $products = Product::query()->whereIn('id', $productIds)->get()->keyBy('id');
 
-    foreach ($productIds as $pid) {
-      $p = $products->get($pid);
-      if (!$p) continue;
-      if (($p->status ?? 'active') !== 'active') {
-        return response()->json([
-          'ok' => false,
-          'message' => 'One or more items are not available for sale.',
-        ], 422);
-      }
-    }
-
     $subtotal = 0.0;
     foreach ($items as $it) {
       $product = $products->get($it['product_id']);
@@ -207,7 +194,9 @@ class CheckoutController extends Controller
         }
 
         $before = (int) $stock->stock;
-        if ($before < $qty) {
+        $defectiveQty = (int) ($stock->defective_qty ?? 0);
+        $sellableBefore = max(0, $before - $defectiveQty);
+        if ($sellableBefore < $qty) {
           abort(422, 'Insufficient stock for one or more items.');
         }
 
