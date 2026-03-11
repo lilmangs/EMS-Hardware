@@ -109,7 +109,16 @@ const stockBadge = (stock: number, context?: string) => {
     }
 };
 
-const sellableBadge = (sellable: number, context?: string) => {
+const sellableBadge = (sellable: number, defective: number, context?: string) => {
+    if (sellable === 0 && defective > 0) {
+        const text = context ? `Out (All Defective) (${context})` : 'Out (All Defective)';
+        return (
+            <Badge variant="destructive" className="text-[10px]">
+                {text}
+            </Badge>
+        );
+    }
+
     const status = getStockStatus(sellable);
     const text = context ? `Sellable: ${sellable} (${context})` : `Sellable: ${sellable}`;
     switch (status) {
@@ -138,22 +147,6 @@ const sellableBadge = (sellable: number, context?: string) => {
                 </Badge>
             );
     }
-};
-
-const defectiveBadge = (defective: number) => {
-    if (defective > 0) {
-        return (
-            <Badge variant="destructive" className="text-[10px]">
-                Defective: {defective}
-            </Badge>
-        );
-    }
-
-    return (
-        <Badge variant="outline" className="text-[10px]">
-            Defective: 0
-        </Badge>
-    );
 };
 
 const lowStockBadge = (stock: number, restockingLevel: number) => {
@@ -198,6 +191,7 @@ export default function Products() {
     const [productsRefreshNonce, setProductsRefreshNonce] = useState(0);
     const [products, setProducts] = useState<Product[]>(productsPaginator?.data ?? []);
     const [allBranchStockById, setAllBranchStockById] = useState<Map<number, number>>(new Map());
+    const [allBranchDefectiveById, setAllBranchDefectiveById] = useState<Map<number, number>>(new Map());
     const [searchQuery, setSearchQuery] = useState('');
     const [activeCategory, setActiveCategory] = useState('All');
     const [sortBy, setSortBy] = useState<SortKey>('name');
@@ -254,6 +248,7 @@ export default function Products() {
                 }
 
                 setAllBranchStockById(stockTotals);
+                setAllBranchDefectiveById(defectiveTotals);
 
                 const base = productsPaginator?.data ?? [];
                 setProducts(
@@ -280,7 +275,7 @@ export default function Products() {
             setProducts(
                 base.map((p) => {
                     const totalStock = allBranchStockById.get(p.id) ?? p.stock;
-                    const defectiveQty = Number((p as any).defective_qty ?? 0) || 0;
+                    const defectiveQty = allBranchDefectiveById.get(p.id) ?? 0;
                     const sellable = Math.max(0, totalStock - defectiveQty);
                     return { ...p, stock: sellable, total_stock: totalStock, defective_qty: defectiveQty };
                 })
@@ -329,7 +324,7 @@ export default function Products() {
         return () => {
             cancelled = true;
         };
-    }, [effectiveBranch, productsPaginator, allBranchStockById, productsRefreshNonce]);
+    }, [effectiveBranch, productsPaginator, allBranchStockById, allBranchDefectiveById, productsRefreshNonce]);
 
     const [isAddProductOpen, setIsAddProductOpen] = useState(false);
     const [newProduct, setNewProduct] = useState<Omit<Product, 'id'>>({
@@ -1067,8 +1062,7 @@ function ProductCardGrid({
                     <div className="text-xs font-semibold text-primary">{peso(product.price)}</div>
                     <div className="mt-1 flex flex-col items-start gap-1">
                         {showLowStock && lowStockBadge(product.stock, restockingLevel)}
-                        {sellableBadge(product.stock, stockContextLabel(branch))}
-                        {defectiveBadge(defectiveQty)}
+                        {sellableBadge(product.stock, defectiveQty, stockContextLabel(branch))}
                     </div>
                 </div>
             </div>
@@ -1132,8 +1126,7 @@ function ProductCardList({
                 <div className="text-sm font-semibold text-primary">{peso(product.price)}</div>
                 <div className="mt-1 flex flex-col items-end gap-1">
                     {showLowStock && lowStockBadge(product.stock, restockingLevel)}
-                    {sellableBadge(product.stock, stockContextLabel(branch))}
-                    {defectiveBadge(defectiveQty)}
+                    {sellableBadge(product.stock, defectiveQty, stockContextLabel(branch))}
                 </div>
             </div>
 

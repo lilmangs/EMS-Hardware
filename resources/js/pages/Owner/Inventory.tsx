@@ -59,6 +59,8 @@ type InventoryItem = {
     branchKey: 'lagonglong' | 'balingasag';
     branch: string;
     stock: number;
+    totalStock: number;
+    defectiveQty: number;
     reorderLevel: number;
     price: number;
     lastUpdated: string;
@@ -92,6 +94,7 @@ export default function Inventory() {
 
     const [category, setCategory] = useState<'all' | 'Hand Tools' | 'Power Tools' | 'Fasteners' | 'Paint' | 'Measuring Tools'>('all');
     const [statusFilter, setStatusFilter] = useState<'all' | 'in-stock' | 'low-stock' | 'out-of-stock'>('all');
+    const [conditionFilter, setConditionFilter] = useState<'sellable' | 'defective' | 'all'>('sellable');
     const [sortBy, setSortBy] = useState<'name' | 'stock' | 'price' | 'category'>('name');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
     const [query, setQuery] = useState('');
@@ -164,6 +167,10 @@ export default function Inventory() {
 
             const mapped: InventoryItem[] = (data.items ?? []).map((it: any) => {
                 const branchKey = it.branch_key as InventoryItem['branchKey'];
+                const totalStock = Number(it.stock) || 0;
+                const defectiveQty = Number(it.defective_qty) || 0;
+                const sellableQty = Number(it.sellable_qty);
+                const sellable = Number.isFinite(sellableQty) ? sellableQty : Math.max(0, totalStock - defectiveQty);
                 return {
                     productId: Number(it.product_id),
                     sku: it.sku,
@@ -172,7 +179,9 @@ export default function Inventory() {
                     imagePath: it.image_path ?? null,
                     branchKey,
                     branch: branchLabel(branchKey),
-                    stock: Number(it.stock) || 0,
+                    stock: sellable,
+                    totalStock,
+                    defectiveQty,
                     reorderLevel: Number(it.reorder_level) || 0,
                     price: Number(it.price) || 0,
                     lastUpdated: it.updated_at ?? new Date().toISOString(),
@@ -318,10 +327,17 @@ export default function Inventory() {
                 it.sku.toLowerCase().includes(query.toLowerCase()) ||
                 it.category.toLowerCase().includes(query.toLowerCase());
 
+            const conditionOk =
+                conditionFilter === 'all'
+                    ? true
+                    : conditionFilter === 'defective'
+                        ? it.defectiveQty > 0
+                        : !(it.stock === 0 && it.defectiveQty > 0);
+
             const stockStatus = getStockStatus(it);
             const statusOk = statusFilter === 'all' ? true : stockStatus === statusFilter;
 
-            return branchOk && categoryOk && queryOk && statusOk;
+            return branchOk && categoryOk && queryOk && conditionOk && statusOk;
         });
 
         filtered.sort((a, b) => {
@@ -344,14 +360,14 @@ export default function Inventory() {
         });
 
         return filtered;
-    }, [effectiveBranch, category, statusFilter, sortBy, sortOrder, items, query]);
+    }, [effectiveBranch, category, conditionFilter, statusFilter, sortBy, sortOrder, items, query]);
 
     const stats = useMemo(() => {
         const totalSkus = filteredItems.length;
         const lowStock = filteredItems.filter((i) => getStockStatus(i) === 'low-stock').length;
         const outOfStock = filteredItems.filter((i) => getStockStatus(i) === 'out-of-stock').length;
-        const totalUnits = filteredItems.reduce((sum, i) => sum + i.stock, 0);
-        const totalValue = filteredItems.reduce((sum, i) => sum + (i.stock * i.price), 0);
+        const totalUnits = filteredItems.reduce((sum, i) => sum + (conditionFilter === 'defective' ? i.defectiveQty : i.stock), 0);
+        const totalValue = filteredItems.reduce((sum, i) => sum + ((conditionFilter === 'defective' ? i.defectiveQty : i.stock) * i.price), 0);
 
         const categoryStats = filteredItems.reduce((acc, item) => {
             const cat = item.category;
@@ -359,13 +375,14 @@ export default function Inventory() {
                 acc[cat] = { count: 0, totalStock: 0, totalValue: 0 };
             }
             acc[cat].count++;
-            acc[cat].totalStock += item.stock;
-            acc[cat].totalValue += item.stock * item.price;
+            const qty = conditionFilter === 'defective' ? item.defectiveQty : item.stock;
+            acc[cat].totalStock += qty;
+            acc[cat].totalValue += qty * item.price;
             return acc;
         }, {} as Record<string, { count: number; totalStock: number; totalValue: number }>);
 
         return { totalSkus, lowStock, outOfStock, totalUnits, totalValue, categoryStats };
-    }, [filteredItems]);
+    }, [conditionFilter, filteredItems]);
 
     const handleSort = (field: typeof sortBy) => {
         if (sortBy === field) {
@@ -517,6 +534,16 @@ export default function Inventory() {
                                                 <SelectItem value="Measuring Tools">Measuring Tools</SelectItem>
                                             </SelectContent>
                                         </Select>
+                                        <Select value={conditionFilter} onValueChange={(value: any) => setConditionFilter(value)}>
+                                            <SelectTrigger className="w-[140px]">
+                                                <SelectValue placeholder="Condition" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="sellable">Sellable</SelectItem>
+                                                <SelectItem value="defective">Defective</SelectItem>
+                                                <SelectItem value="all">All</SelectItem>
+                                            </SelectContent>
+                                        </Select>
                                         <Select value={statusFilter} onValueChange={(value: any) => setStatusFilter(value)}>
                                             <SelectTrigger className="w-[140px]">
                                                 <SelectValue placeholder="Status" />
@@ -570,7 +597,7 @@ export default function Inventory() {
                                                 onClick={() => handleSort('stock')}
                                             >
                                                 <span className="inline-flex items-center">
-                                                    Stock <SortIcon field="stock" />
+                                                    {conditionFilter === 'defective' ? 'Defective' : 'Stock'} <SortIcon field="stock" />
                                                 </span>
                                             </TableHead>
                                             <TableHead>Status</TableHead>
@@ -604,6 +631,7 @@ export default function Inventory() {
                                                 const stockStatus = getStockStatus(item);
                                                 const StatusIcon = getStockStatusIcon(stockStatus);
                                                 const itemId = `${item.branchKey}-${item.sku}`;
+                                                const displayQty = conditionFilter === 'defective' ? item.defectiveQty : item.stock;
 
                                                 return (
                                                     <TableRow key={itemId}>
@@ -642,21 +670,27 @@ export default function Inventory() {
                                                         </TableCell>
                                                         <TableCell>
                                                             <div className="text-center">
-                                                                <div className="font-medium">{item.stock}</div>
+                                                                <div className="font-medium">
+                                                                    {conditionFilter === 'defective' ? `${displayQty} defective` : displayQty}
+                                                                </div>
                                                                 <Progress
-                                                                    value={(item.stock / item.maxStock) * 100}
+                                                                    value={(displayQty / item.maxStock) * 100}
                                                                     className="w-16 h-2 mt-1"
                                                                 />
                                                             </div>
                                                         </TableCell>
                                                         <TableCell>
-                                                            <Badge variant={getStockStatusColor(stockStatus)} className="gap-1">
-                                                                <StatusIcon className="h-3 w-3" />
-                                                                {stockStatus.replace('-', ' ')}
-                                                            </Badge>
+                                                            {conditionFilter === 'defective' ? (
+                                                                <Badge variant="secondary">Defective</Badge>
+                                                            ) : (
+                                                                <Badge variant={getStockStatusColor(stockStatus)} className="gap-1">
+                                                                    <StatusIcon className="h-3 w-3" />
+                                                                    {stockStatus.replace('-', ' ')}
+                                                                </Badge>
+                                                            )}
                                                         </TableCell>
                                                         <TableCell>₱{item.price.toFixed(2)}</TableCell>
-                                                        <TableCell>₱{(item.stock * item.price).toFixed(2)}</TableCell>
+                                                        <TableCell>₱{(displayQty * item.price).toFixed(2)}</TableCell>
                                                         <TableCell className="text-right">
                                                             <DropdownMenu>
                                                                 <DropdownMenuTrigger asChild>
@@ -881,7 +915,7 @@ export default function Inventory() {
                                     <div className="border-t" />
                                     <div className="space-y-1">
                                         <div className="flex justify-between items-center">
-                                            <span className="text-sm text-muted-foreground">Stock</span>
+                                            <span className="text-sm text-muted-foreground">Sellable Stock</span>
                                             <div className="flex items-center gap-2">
                                                 <Badge variant={getStockStatusColor(stockStatus)} className="gap-1">
                                                     <StatusIcon className="h-3 w-3" />
@@ -896,6 +930,16 @@ export default function Inventory() {
                                             <span>Reorder at: {detailsItem.reorderLevel}</span>
                                             <span>Max: {detailsItem.maxStock}</span>
                                         </div>
+                                    </div>
+                                    <div className="border-t" />
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-sm text-muted-foreground">Defective Qty</span>
+                                        <span className="text-sm font-medium">{detailsItem.defectiveQty}</span>
+                                    </div>
+                                    <div className="border-t" />
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-sm text-muted-foreground">Total Qty</span>
+                                        <span className="text-sm font-medium">{detailsItem.totalStock}</span>
                                     </div>
                                     <div className="border-t" />
                                     <div className="flex justify-between items-center">
