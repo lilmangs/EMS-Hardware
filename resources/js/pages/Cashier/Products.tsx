@@ -109,46 +109,6 @@ const stockBadge = (stock: number, context?: string) => {
     }
 };
 
-const sellableBadge = (sellable: number, defective: number, context?: string) => {
-    if (sellable === 0 && defective > 0) {
-        const text = context ? `Out (All Defective) (${context})` : 'Out (All Defective)';
-        return (
-            <Badge variant="destructive" className="text-[10px]">
-                {text}
-            </Badge>
-        );
-    }
-
-    const status = getStockStatus(sellable);
-    const text = context ? `Sellable: ${sellable} (${context})` : `Sellable: ${sellable}`;
-    switch (status) {
-        case 'out':
-            return (
-                <Badge variant="destructive" className="text-[10px]">
-                    {text}
-                </Badge>
-            );
-        case 'critical':
-            return (
-                <Badge variant="destructive" className="text-[10px]">
-                    {text}
-                </Badge>
-            );
-        case 'low':
-            return (
-                <Badge className="text-[10px] bg-orange-500 hover:bg-orange-600">
-                    {text}
-                </Badge>
-            );
-        default:
-            return (
-                <Badge className="text-[10px] bg-emerald-600 hover:bg-emerald-700">
-                    {text}
-                </Badge>
-            );
-    }
-};
-
 const lowStockBadge = (stock: number, restockingLevel: number) => {
     const intensity = stock <= Math.max(1, Math.floor(restockingLevel / 2)) ? 'critical' : 'low';
     const label = `Low Stock! Only ${stock} left`;
@@ -180,6 +140,8 @@ export default function Products() {
     const { products: productsPaginator, filters } = usePage<{ products?: Paginated<Product>; filters?: { status?: string } }>().props;
     const { auth } = usePage<{ auth?: { user?: { role: string; branch_key: 'lagonglong' | 'balingasag' | null } } }>().props;
     const user = auth?.user ?? null;
+    const isOwner = user?.role === 'owner';
+    const canAddProduct = user?.role === 'staff';
     const userBranchKey = user?.branch_key ?? null;
     const isBranchRestrictedUser = !!user && ['staff', 'cashier', 'delivery'].includes(user.role) && !!userBranchKey;
 
@@ -609,10 +571,12 @@ export default function Products() {
                         <p className="text-muted-foreground">Manage your inventory and product catalog</p>
                     </div>
                     <div className="flex items-center gap-2">
-                        <Button onClick={() => setIsAddProductOpen(true)}>
-                            <Plus className="mr-2 h-4 w-4" />
-                            Add Product
-                        </Button>
+                        {canAddProduct && (
+                            <Button onClick={() => setIsAddProductOpen(true)}>
+                                <Plus className="mr-2 h-4 w-4" />
+                                Add Product
+                            </Button>
+                        )}
                     </div>
                 </div>
 
@@ -798,178 +762,189 @@ export default function Products() {
                     </div>
                 </div>
 
-                <Dialog
-                    open={isAddProductOpen}
-                    onOpenChange={(open) => {
-                        setIsAddProductOpen(open);
-                        if (!open) {
-                            setNewProductImage(null);
-                            if (newProductImagePreviewUrl) {
-                                URL.revokeObjectURL(newProductImagePreviewUrl);
+                {canAddProduct && (
+                    <Dialog
+                        open={isAddProductOpen}
+                        onOpenChange={(open) => {
+                            setIsAddProductOpen(open);
+                            if (!open) {
+                                setNewProductImage(null);
+                                if (newProductImagePreviewUrl) {
+                                    URL.revokeObjectURL(newProductImagePreviewUrl);
+                                    setNewProductImagePreviewUrl(null);
+                                }
                             }
-                            setNewProductImagePreviewUrl(null);
-                        }
-                    }}
-                >
-                    <DialogContent className="sm:max-w-3xl">
-                        <DialogHeader>
-                            <DialogTitle>Add Product</DialogTitle>
-                            <DialogDescription>Fill in the product details to add it to the catalog.</DialogDescription>
-                        </DialogHeader>
+                        }}
+                    >
+                        <DialogContent className="sm:max-w-3xl">
+                            <DialogHeader>
+                                <DialogTitle>Add Product</DialogTitle>
+                                <DialogDescription>Fill in the product details to add it to the catalog.</DialogDescription>
+                            </DialogHeader>
 
-                        <div className="grid gap-4 lg:grid-cols-2">
-                            <div className="rounded-lg bg-muted p-6">
-                                <div className="flex items-center justify-center">
-                                    {newProductImagePreviewUrl ? (
-                                        <img
-                                            src={newProductImagePreviewUrl}
-                                            alt={newProduct.name || 'New product'}
-                                            className="h-56 w-full max-w-sm rounded-xl object-cover border"
+                            <div className="grid gap-4 lg:grid-cols-2">
+                                <div className="rounded-lg bg-muted p-6">
+                                    <div className="flex items-center justify-center">
+                                        {newProductImagePreviewUrl ? (
+                                            <img
+                                                src={newProductImagePreviewUrl}
+                                                alt={newProduct.name || 'New product'}
+                                                className="h-56 w-full max-w-sm rounded-xl object-cover border"
+                                            />
+                                        ) : (
+                                            <div className="h-40 w-full max-w-sm rounded-xl bg-orange-100 flex items-center justify-center dark:bg-orange-950">
+                                                <Package className="h-10 w-10 text-orange-600" />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="mt-4 space-y-1">
+                                        <label className="text-xs font-medium text-muted-foreground">Product image</label>
+                                        <Input
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={(e) => {
+                                                const file = e.target.files?.[0] ?? null;
+
+                                                if (newProductImagePreviewUrl) {
+                                                    URL.revokeObjectURL(newProductImagePreviewUrl);
+                                                }
+
+                                                setNewProductImage(file);
+                                                setNewProductImagePreviewUrl(file ? URL.createObjectURL(file) : null);
+                                            }}
                                         />
-                                    ) : (
-                                        <div className="h-40 w-full max-w-sm rounded-xl bg-orange-100 flex items-center justify-center dark:bg-orange-950">
-                                            <Package className="h-10 w-10 text-orange-600" />
-                                        </div>
-                                    )}
+                                    </div>
                                 </div>
 
-                                <div className="mt-4 space-y-1">
-                                    <label className="text-xs font-medium text-muted-foreground">Product image</label>
-                                    <Input
-                                        type="file"
-                                        accept="image/*"
-                                        onChange={(e) => {
-                                            const file = e.target.files?.[0] ?? null;
-
-                                            if (newProductImagePreviewUrl) {
-                                                URL.revokeObjectURL(newProductImagePreviewUrl);
+                                <div className="grid gap-3">
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-muted-foreground">Status</label>
+                                        <Select
+                                            value={String(newProduct.status ?? 'active')}
+                                            onValueChange={(value) =>
+                                                setNewProduct((p) => ({
+                                                    ...p,
+                                                    status: value as Product['status'],
+                                                }))
                                             }
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select status" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="active">Active</SelectItem>
+                                                <SelectItem value="out_of_stock">Out of stock</SelectItem>
+                                                <SelectItem value="reserved">Reserved</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
 
-                                            setNewProductImage(file);
-                                            setNewProductImagePreviewUrl(file ? URL.createObjectURL(file) : null);
-                                        }}
-                                    />
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-muted-foreground">Category</label>
+                                        <Select
+                                            value={newProduct.category}
+                                            onValueChange={(value: any) => setNewProduct((p) => ({ ...p, category: value }))}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select category" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {categories.filter((c) => c !== 'All').map((c) => (
+                                                    <SelectItem key={c} value={c}>
+                                                        {c}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-medium text-muted-foreground">
+                                                SKU <span className="text-destructive">*</span>
+                                            </label>
+                                            <Input
+                                                value={newProduct.sku}
+                                                onChange={(e) => setNewProduct((p) => ({ ...p, sku: e.target.value }))}
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-medium text-muted-foreground">
+                                                Product name <span className="text-destructive">*</span>
+                                            </label>
+                                            <Input
+                                                value={newProduct.name}
+                                                onChange={(e) => setNewProduct((p) => ({ ...p, name: e.target.value }))}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-medium text-muted-foreground">Unit price (₱)</label>
+                                            <Input
+                                                type="number"
+                                                value={Number(newProduct.price) || 0}
+                                                onChange={(e) =>
+                                                    setNewProduct((p) => ({ ...p, price: Number(e.target.value) || 0 }))
+                                                }
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-medium text-muted-foreground">Initial stock</label>
+                                            <Input
+                                                type="number"
+                                                value={Number(newProduct.stock) || 0}
+                                                onChange={(e) =>
+                                                    setNewProduct((p) => ({ ...p, stock: Number(e.target.value) || 0 }))
+                                                }
+                                                placeholder="e.g. 10"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-muted-foreground">Restocking Level</label>
+                                        <Input
+                                            type="number"
+                                            value={Number(newProduct.restocking_level) || 0}
+                                            onChange={(e) =>
+                                                setNewProduct((p) => ({
+                                                    ...p,
+                                                    restocking_level: Number(e.target.value) || 0,
+                                                }))
+                                            }
+                                        />
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-muted-foreground">Description</label>
+                                        <textarea
+                                            value={String(newProduct.description ?? '')}
+                                            onChange={(e) => setNewProduct((p) => ({ ...p, description: e.target.value }))}
+                                            placeholder="Optional product details"
+                                            className="min-h-[84px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                        />
+                                    </div>
                                 </div>
                             </div>
 
-                            <div className="grid gap-3">
-                                <div className="space-y-1">
-                                    <label className="text-xs font-medium text-muted-foreground">Status</label>
-                                    <Select
-                                        value={String(newProduct.status ?? 'active')}
-                                        onValueChange={(value) =>
-                                            setNewProduct((p) => ({
-                                                ...p,
-                                                status: value as Product['status'],
-                                            }))
-                                        }
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select status" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="active">Active</SelectItem>
-                                            <SelectItem value="out_of_stock">Out of stock</SelectItem>
-                                            <SelectItem value="reserved">Reserved</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-
-                                <div className="space-y-1">
-                                    <label className="text-xs font-medium text-muted-foreground">Category</label>
-                                    <Select
-                                        value={newProduct.category}
-                                        onValueChange={(value: any) => setNewProduct((p) => ({ ...p, category: value }))}
-                                    >
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Select category" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {categories.filter((c) => c !== 'All').map((c) => (
-                                                <SelectItem key={c} value={c}>
-                                                    {c}
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-medium text-muted-foreground">
-                                            SKU <span className="text-destructive">*</span>
-                                        </label>
-                                        <Input
-                                            value={newProduct.sku}
-                                            onChange={(e) => setNewProduct((p) => ({ ...p, sku: e.target.value }))}
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-medium text-muted-foreground">
-                                            Product name <span className="text-destructive">*</span>
-                                        </label>
-                                        <Input
-                                            value={newProduct.name}
-                                            onChange={(e) => setNewProduct((p) => ({ ...p, name: e.target.value }))}
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-medium text-muted-foreground">Unit price (₱)</label>
-                                        <Input
-                                            type="number"
-                                            value={Number(newProduct.price) || 0}
-                                            onChange={(e) => setNewProduct((p) => ({ ...p, price: Number(e.target.value) || 0 }))}
-                                        />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-medium text-muted-foreground">Initial stock</label>
-                                        <Input
-                                            type="number"
-                                            value={Number(newProduct.stock) || 0}
-                                            onChange={(e) => setNewProduct((p) => ({ ...p, stock: Number(e.target.value) || 0 }))}
-                                            placeholder="e.g. 10"
-                                        />
-                                    </div>
-                                </div>
-
-                                <div className="space-y-1">
-                                    <label className="text-xs font-medium text-muted-foreground">Restocking Level</label>
-                                    <Input
-                                        type="number"
-                                        value={Number(newProduct.restocking_level) || 0}
-                                        onChange={(e) => setNewProduct((p) => ({ ...p, restocking_level: Number(e.target.value) || 0 }))}
-                                    />
-                                </div>
-
-                                <div className="space-y-1">
-                                    <label className="text-xs font-medium text-muted-foreground">Description</label>
-                                    <textarea
-                                        value={String(newProduct.description ?? '')}
-                                        onChange={(e) => setNewProduct((p) => ({ ...p, description: e.target.value }))}
-                                        placeholder="Optional product details"
-                                        className="min-h-[84px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                    />
-                                </div>
-                            </div>
-                        </div>
-
-                        <DialogFooter>
-                            <Button variant="outline" onClick={() => setIsAddProductOpen(false)}>
-                                Cancel
-                            </Button>
-                            <Button onClick={onCreateProduct}>
-                                <Plus className="mr-2 h-4 w-4" />
-                                Add Product
-                            </Button>
-                        </DialogFooter>
-                </DialogContent>
-            </Dialog>
+                            <DialogFooter>
+                                <Button variant="outline" onClick={() => setIsAddProductOpen(false)}>
+                                    Cancel
+                                </Button>
+                                <Button onClick={onCreateProduct}>
+                                    <Plus className="mr-2 h-4 w-4" />
+                                    Add Product
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                )}
             </div>
-        </AppLayout>
-    );
+            </AppLayout>
+        );
 }
 
 // ---- Grid Card ----
@@ -1062,7 +1037,13 @@ function ProductCardGrid({
                     <div className="text-xs font-semibold text-primary">{peso(product.price)}</div>
                     <div className="mt-1 flex flex-col items-start gap-1">
                         {showLowStock && lowStockBadge(product.stock, restockingLevel)}
-                        {sellableBadge(product.stock, defectiveQty, stockContextLabel(branch))}
+                        {product.stock === 0 && defectiveQty > 0 ? (
+                            <Badge variant="destructive" className="text-[10px]">
+                                {`Out (All Defective) (${stockContextLabel(branch)})`}
+                            </Badge>
+                        ) : (
+                            stockBadge(product.stock, stockContextLabel(branch))
+                        )}
                     </div>
                 </div>
             </div>
@@ -1126,7 +1107,13 @@ function ProductCardList({
                 <div className="text-sm font-semibold text-primary">{peso(product.price)}</div>
                 <div className="mt-1 flex flex-col items-end gap-1">
                     {showLowStock && lowStockBadge(product.stock, restockingLevel)}
-                    {sellableBadge(product.stock, defectiveQty, stockContextLabel(branch))}
+                    {product.stock === 0 && defectiveQty > 0 ? (
+                        <Badge variant="destructive" className="text-[10px]">
+                            {`Out (All Defective) (${stockContextLabel(branch)})`}
+                        </Badge>
+                    ) : (
+                        stockBadge(product.stock, stockContextLabel(branch))
+                    )}
                 </div>
             </div>
 

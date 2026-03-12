@@ -1,5 +1,5 @@
 import { Head, usePage } from '@inertiajs/react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshCcw, Store, Package, Truck, CheckCircle2, MapPin, Hash, Clock, Boxes, PhilippinePeso } from 'lucide-react';
 import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
@@ -98,6 +98,9 @@ export default function DeliveryMonitoring() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
 
+    const activeFetchRef = useRef<AbortController | null>(null);
+    const fetchSeqRef = useRef(0);
+
     const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
     const [selectedDelivery, setSelectedDelivery] = useState<DeliveryRecord | null>(null);
     const [statusFilters, setStatusFilters] = useState<Record<DeliveryStatus, boolean>>({
@@ -107,6 +110,13 @@ export default function DeliveryMonitoring() {
     });
 
     const fetchData = useCallback(async () => {
+        const seq = ++fetchSeqRef.current;
+        if (activeFetchRef.current) {
+            activeFetchRef.current.abort();
+        }
+        const controller = new AbortController();
+        activeFetchRef.current = controller;
+
         setIsLoading(true);
         try {
             setError('');
@@ -116,21 +126,38 @@ export default function DeliveryMonitoring() {
             const res = await fetch(`/owner/delivery-monitoring/data?${params.toString()}`, {
                 headers: { 'Accept': 'application/json' },
                 credentials: 'same-origin',
+                cache: 'no-store',
+                signal: controller.signal,
             });
 
             if (!res.ok) throw new Error('Failed to load deliveries');
             const json = (await res.json()) as DeliveryMonitoringData;
-            setData(json);
+            if (seq === fetchSeqRef.current && !controller.signal.aborted) {
+                setData(json);
+            }
         } catch (e: any) {
+            if (e?.name === 'AbortError') return;
             setError(e?.message ? String(e.message) : 'Failed to load deliveries');
         } finally {
-            setIsLoading(false);
+            if (seq === fetchSeqRef.current && !controller.signal.aborted) {
+                setIsLoading(false);
+            }
         }
     }, [effectiveBranch]);
 
     useEffect(() => {
+        setSelectedDelivery(null);
+        setData(null);
         fetchData();
     }, [fetchData]);
+
+    useEffect(() => {
+        return () => {
+            if (activeFetchRef.current) {
+                activeFetchRef.current.abort();
+            }
+        };
+    }, []);
 
     const deliveriesFiltered = useMemo(() => {
         const list = data?.deliveries ?? [];
@@ -417,6 +444,7 @@ export default function DeliveryMonitoring() {
                                 <TabsContent value="calendar">
                                     <div id="calendar" className="rounded-lg border overflow-hidden">
                                         <FullCalendar
+                                            key={`${effectiveBranch}-${viewMode}`}
                                             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
                                             headerToolbar={{
                                                 left: 'prev,next today',

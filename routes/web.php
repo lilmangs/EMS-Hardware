@@ -79,6 +79,10 @@ Route::get('/SalesReports', [SalesreportsController::class, 'index'])
     ->middleware(['auth', 'verified', 'role:owner'])
     ->name('salesreports');
 
+Route::get('/owner/sales-reports/data', [SalesreportsController::class, 'data'])
+    ->middleware(['auth', 'verified', 'role:owner'])
+    ->name('owner.salesreports.data');
+
 Route::get('/BranchComparison', [BranchComparisonController::class, 'index'])
     ->middleware(['auth', 'verified', 'role:owner'])
     ->name('branchcomparison');

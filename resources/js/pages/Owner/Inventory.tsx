@@ -56,7 +56,7 @@ type InventoryItem = {
     name: string;
     category: 'Hand Tools' | 'Power Tools' | 'Fasteners' | 'Paint' | 'Measuring Tools';
     imagePath?: string | null;
-    branchKey: 'lagonglong' | 'balingasag';
+    branchKey: 'lagonglong' | 'balingasag' | 'all';
     branch: string;
     stock: number;
     totalStock: number;
@@ -239,7 +239,44 @@ export default function Inventory() {
     };
 
     const branchLabel = (k: InventoryItem['branchKey']) =>
-        k === 'lagonglong' ? 'Lagonglong Main Branch' : 'Balingasag Branch';
+        k === 'lagonglong' ? 'Lagonglong Main Branch' : k === 'balingasag' ? 'Balingasag Branch' : 'All Branches';
+
+    const displayedItems = useMemo(() => {
+        if (effectiveBranch !== 'all') return items;
+
+        const byProduct = new Map<number, InventoryItem>();
+
+        for (const it of items) {
+            const existing = byProduct.get(it.productId);
+            if (!existing) {
+                byProduct.set(it.productId, {
+                    ...it,
+                    branchKey: 'all',
+                    branch: 'All Branches',
+                });
+                continue;
+            }
+
+            byProduct.set(it.productId, {
+                ...existing,
+                imagePath: existing.imagePath ?? it.imagePath,
+                stock: existing.stock + it.stock,
+                defectiveQty: existing.defectiveQty + it.defectiveQty,
+                totalStock: existing.totalStock + it.totalStock,
+                reorderLevel: Math.max(existing.reorderLevel, it.reorderLevel),
+                minStock: Math.min(existing.minStock, it.minStock),
+                maxStock: Math.max(existing.maxStock, it.maxStock),
+                lastUpdated:
+                    new Date(existing.lastUpdated).getTime() >= new Date(it.lastUpdated).getTime()
+                        ? existing.lastUpdated
+                        : it.lastUpdated,
+                branchKey: 'all',
+                branch: 'All Branches',
+            });
+        }
+
+        return Array.from(byProduct.values());
+    }, [effectiveBranch, items]);
 
     const getStockStatus = (item: InventoryItem) => {
         if (item.stock === 0) return 'out-of-stock';
@@ -318,7 +355,7 @@ export default function Inventory() {
     };
 
     const filteredItems = useMemo(() => {
-        let filtered = items.filter((it) => {
+        let filtered = displayedItems.filter((it) => {
             const branchOk = effectiveBranch === 'all' ? true : it.branchKey === effectiveBranch;
             const categoryOk = category === 'all' ? true : it.category === category;
             const queryOk =
@@ -360,7 +397,7 @@ export default function Inventory() {
         });
 
         return filtered;
-    }, [effectiveBranch, category, conditionFilter, statusFilter, sortBy, sortOrder, items, query]);
+    }, [effectiveBranch, category, conditionFilter, statusFilter, sortBy, sortOrder, displayedItems, query]);
 
     const stats = useMemo(() => {
         const totalSkus = filteredItems.length;
@@ -539,9 +576,8 @@ export default function Inventory() {
                                                 <SelectValue placeholder="Condition" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value="sellable">Sellable</SelectItem>
+                                                <SelectItem value="sellable">Active</SelectItem>
                                                 <SelectItem value="defective">Defective</SelectItem>
-                                                <SelectItem value="all">All</SelectItem>
                                             </SelectContent>
                                         </Select>
                                         <Select value={statusFilter} onValueChange={(value: any) => setStatusFilter(value)}>
@@ -704,6 +740,7 @@ export default function Inventory() {
                                                                             setRestockItem(item);
                                                                             setRestockQty(1);
                                                                         }}
+                                                                        disabled={item.branchKey === 'all'}
                                                                     >
                                                                         <Plus className="mr-2 h-4 w-4" />
                                                                         Restock

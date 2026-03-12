@@ -1,5 +1,5 @@
 import { Head, usePage } from '@inertiajs/react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     TicketX,
     PhilippinePeso,
@@ -112,7 +112,7 @@ export default function Refunds() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
 
-    const [dateRange, setDateRange] = useState<'today' | 'yesterday' | 'week' | 'custom'>('today');
+    const [dateRange, setDateRange] = useState<'all' | 'today' | 'yesterday' | 'week' | 'custom'>('week');
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
     const [search, setSearch] = useState('');
@@ -125,10 +125,17 @@ export default function Refunds() {
     const [isViewOpen, setIsViewOpen] = useState(false);
     const [selectedRefund, setSelectedRefund] = useState<RefundRow | null>(null);
 
+    const activeFetchRef = useRef<AbortController | null>(null);
+    const fetchSeqRef = useRef(0);
+
     const computedDates = useMemo(() => {
         const now = new Date();
         const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0);
         const endOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59);
+
+        if (dateRange === 'all') {
+            return { from: null, to: null };
+        }
 
         if (dateRange === 'custom') {
             return {
@@ -153,6 +160,13 @@ export default function Refunds() {
     }, [dateRange, dateFrom, dateTo]);
 
     const fetchData = useCallback(async () => {
+        const seq = ++fetchSeqRef.current;
+        if (activeFetchRef.current) {
+            activeFetchRef.current.abort();
+        }
+        const controller = new AbortController();
+        activeFetchRef.current = controller;
+
         setIsLoading(true);
         try {
             setError('');
@@ -174,16 +188,31 @@ export default function Refunds() {
             const res = await fetch(`/owner/refunds/data?${params.toString()}`, {
                 headers: { Accept: 'application/json' },
                 credentials: 'same-origin',
+                cache: 'no-store',
+                signal: controller.signal,
             });
             if (!res.ok) throw new Error('Failed to load refunds');
             const json = (await res.json()) as RefundsData;
-            setData(json);
+            if (seq === fetchSeqRef.current && !controller.signal.aborted) {
+                setData(json);
+            }
         } catch (e: any) {
+            if (e?.name === 'AbortError') return;
             setError(e?.message ? String(e.message) : 'Failed to load refunds');
         } finally {
-            setIsLoading(false);
+            if (seq === fetchSeqRef.current && !controller.signal.aborted) {
+                setIsLoading(false);
+            }
         }
     }, [computedDates.from, computedDates.to, dir, effectiveBranch, page, perPage, search, sort]);
+
+    useEffect(() => {
+        return () => {
+            if (activeFetchRef.current) {
+                activeFetchRef.current.abort();
+            }
+        };
+    }, []);
 
     useEffect(() => {
         setPage(1);
@@ -207,7 +236,11 @@ export default function Refunds() {
         setIsViewOpen(true);
     }, []);
 
-    const refunds = data?.refunds?.data ?? [];
+    const refundsRaw = data?.refunds?.data ?? [];
+    const refunds = useMemo(() => {
+        if (effectiveBranch === 'all') return refundsRaw;
+        return refundsRaw.filter((r) => r.branch_key === effectiveBranch);
+    }, [effectiveBranch, refundsRaw]);
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -294,11 +327,12 @@ export default function Refunds() {
                                 />
                             </div>
 
-                            <Select value={dateRange} onValueChange={(v) => setDateRange(v as any)}>
+                            <Select value={dateRange} onValueChange={(v: any) => setDateRange(v)}>
                                 <SelectTrigger>
-                                    <SelectValue placeholder="Date range" />
+                                    <SelectValue placeholder="Date" />
                                 </SelectTrigger>
                                 <SelectContent>
+                                    <SelectItem value="all">All Time</SelectItem>
                                     <SelectItem value="today">Today</SelectItem>
                                     <SelectItem value="yesterday">Yesterday</SelectItem>
                                     <SelectItem value="week">This Week</SelectItem>
@@ -306,7 +340,7 @@ export default function Refunds() {
                                 </SelectContent>
                             </Select>
 
-                            <Select value={String(perPage)} onValueChange={(v) => setPerPage(Number(v))}>
+                            <Select value={String(perPage)} onValueChange={(v: any) => setPerPage(Number(v) || 10)}>
                                 <SelectTrigger>
                                     <SelectValue placeholder="Rows" />
                                 </SelectTrigger>

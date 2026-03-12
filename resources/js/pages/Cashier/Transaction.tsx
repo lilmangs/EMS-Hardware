@@ -2,6 +2,18 @@ import { useCallback, useMemo, useState } from 'react';
 import { Head, usePage } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { Calendar, FileText, PhilippinePeso, Printer } from 'lucide-react';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -44,6 +56,7 @@ export default function Transaction() {
     const branchKey = props.branch_key;
     const recentSales = props.recent_sales ?? [];
     const [lastReceipt, setLastReceipt] = useState<Receipt | null>(null);
+    const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 
     const formatDateTime = useCallback((iso: string) => {
         const d = new Date(iso);
@@ -143,6 +156,15 @@ export default function Transaction() {
         };
     }, [branchKey, formatDateTime, recentSales]);
 
+    const openPreview = useCallback(
+        (sale: (typeof recentSales)[number]) => {
+            const r = saleToReceipt(sale);
+            setLastReceipt(r);
+            setIsPreviewOpen(true);
+        },
+        [saleToReceipt],
+    );
+
     const itemsCountForSale = useCallback((sale: (typeof recentSales)[number]) => {
         return (sale.items ?? []).reduce((sum, it) => sum + (Number(it.qty) || 0), 0);
     }, [recentSales]);
@@ -151,64 +173,243 @@ export default function Transaction() {
         return [...recentSales].sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
     }, [recentSales]);
 
+    const stats = useMemo(() => {
+        const salesCount = sortedSales.length;
+        const grossTotal = sortedSales.reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+        const grossSubtotal = sortedSales.reduce((sum, s) => sum + (Number(s.subtotal) || 0), 0);
+        const itemsSold = sortedSales.reduce((sum, s) => sum + itemsCountForSale(s), 0);
+
+        return {
+            salesCount,
+            itemsSold,
+            grossSubtotal,
+            grossTotal,
+        };
+    }, [itemsCountForSale, sortedSales]);
+
+    const branchLabel = useMemo(() => {
+        if (!branchKey) return '—';
+        if (branchKey === 'lagonglong') return 'Lagonglong';
+        if (branchKey === 'balingasag') return 'Balingasag';
+        return branchKey;
+    }, [branchKey]);
+
     return (
-       <AppLayout breadcrumbs={breadcrumbs}>
-        <Head title="Transaction" />
-        <div className="flex h-full flex-1 flex-col gap-4 overflow-x-auto bg-background p-4">
-            <h1 className="text-3xl font-bold">Transaction</h1>
-
-
-            <section className="rounded-xl border border-sidebar-border/70 bg-muted/30 p-4 dark:border-sidebar-border">
-                <div className="mb-3 text-sm font-medium text-muted-foreground">Recent Sales</div>
-
-                {sortedSales.length === 0 ? (
-                    <div className="rounded-lg border border-dashed border-border bg-background/50 p-4 text-sm text-muted-foreground">
-                        No recent sales yet.
+        <AppLayout breadcrumbs={breadcrumbs}>
+            <Head title="Transaction" />
+            <div className="space-y-6 p-6">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div className="space-y-1">
+                        <h1 className="text-3xl font-bold">Transaction</h1>
+                        <p className="text-muted-foreground">Review and reprint your recent sales</p>
                     </div>
-                ) : (
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                        {sortedSales.map((s) => (
-                            <div key={s.id} className="rounded-xl border bg-background p-4">
-                                <div className="flex items-start justify-between gap-3">
-                                    <div className="min-w-0">
-                                        <div className="text-sm font-semibold truncate">{s.ref}</div>
-                                        <div className="text-xs text-muted-foreground truncate">{formatDateTime(s.created_at)}</div>
-                                        <div className="mt-1 text-xs text-muted-foreground truncate">
-                                            Items: {itemsCountForSale(s)}
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Recent Sales</CardTitle>
+                            <FileText className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold tabular-nums">{stats.salesCount}</div>
+                            <p className="text-xs text-muted-foreground">Last 50 transactions</p>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Items Sold</CardTitle>
+                            <Printer className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold tabular-nums">{stats.itemsSold}</div>
+                            <p className="text-xs text-muted-foreground">Total quantity across sales</p>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Subtotal</CardTitle>
+                            <PhilippinePeso className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold tabular-nums">{peso(stats.grossSubtotal)}</div>
+                            <p className="text-xs text-muted-foreground">Before totals</p>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Total</CardTitle>
+                            <PhilippinePeso className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold tabular-nums">{peso(stats.grossTotal)}</div>
+                            <p className="text-xs text-muted-foreground">Total collected</p>
+                        </CardContent>
+                    </Card>
+                </div>
+
+                <Card>
+                    <CardHeader className="space-y-1">
+                        <CardTitle>Recent Sales</CardTitle>
+                        <CardDescription>Click a transaction to reprint the receipt.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        {sortedSales.length === 0 ? (
+                            <div className="rounded-lg border border-dashed border-border bg-background/50 p-6 text-center text-sm text-muted-foreground">
+                                No recent sales yet.
+                            </div>
+                        ) : (
+                            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                {sortedSales.map((s) => (
+                                    <div
+                                        key={s.id}
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={() => openPreview(s)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' || e.key === ' ') openPreview(s);
+                                        }}
+                                        className="group cursor-pointer rounded-xl border bg-background p-4 transition-colors hover:bg-muted/30 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                                    >
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="min-w-0">
+                                                <div className="truncate text-sm font-semibold">{s.ref}</div>
+                                                <div className="truncate text-xs text-muted-foreground">{formatDateTime(s.created_at)}</div>
+                                                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                                    <span className="tabular-nums">Items: {itemsCountForSale(s)}</span>
+                                                    <span className="text-border">|</span>
+                                                    <span className="tabular-nums">Total: {peso(s.total)}</span>
+                                                </div>
+                                            </div>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    openPreview(s);
+                                                }}
+                                                className="shrink-0"
+                                            >
+                                                <FileText className="mr-2 h-4 w-4" />
+                                                View
+                                            </Button>
                                         </div>
-                                        <div className="text-xs text-muted-foreground truncate">
-                                            Total: {peso(s.total)}
+
+                                        <div className="mt-4 border-t pt-3 text-xs text-muted-foreground">
+                                            <div className="flex justify-between gap-3">
+                                                <span>Subtotal</span>
+                                                <span className="tabular-nums">{peso(s.subtotal)}</span>
+                                            </div>
+                                            <div className="flex justify-between gap-3 font-semibold text-foreground">
+                                                <span>Total</span>
+                                                <span className="tabular-nums">{peso(s.total)}</span>
+                                            </div>
                                         </div>
                                     </div>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            const r = saleToReceipt(s);
-                                            setLastReceipt(r);
-                                            printReceipt(r);
-                                        }}
-                                        className="shrink-0 rounded-md border px-3 py-2 text-xs font-semibold hover:bg-muted transition-colors"
-                                    >
-                                        Reprint
-                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+                    <DialogContent className="sm:max-w-3xl">
+                        <DialogHeader>
+                            <DialogTitle>Receipt Preview</DialogTitle>
+                            <DialogDescription>Review the details before printing.</DialogDescription>
+                        </DialogHeader>
+
+                        {!lastReceipt ? (
+                            <div className="text-sm text-muted-foreground">No receipt selected.</div>
+                        ) : (
+                            <div className="space-y-4">
+                                <div className="grid gap-3 rounded-md border p-4 text-sm md:grid-cols-3">
+                                    <div>
+                                        <div className="text-muted-foreground">Reference</div>
+                                        <div className="font-medium">{lastReceipt.ref}</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-muted-foreground">Date</div>
+                                        <div className="font-medium">{lastReceipt.createdAt}</div>
+                                    </div>
+                                    <div>
+                                        <div className="text-muted-foreground">Branch</div>
+                                        <div className="font-medium">{branchLabel}</div>
+                                    </div>
                                 </div>
 
-                                <div className="mt-3 border-t pt-3 text-xs text-muted-foreground">
-                                    <div className="flex justify-between"><span>Subtotal</span><span>{peso(s.subtotal)}</span></div>
-                                    <div className="flex justify-between font-semibold text-foreground"><span>Total</span><span>{peso(s.total)}</span></div>
+                                <div className="max-h-[45vh] overflow-auto rounded-md border">
+                                    <div className="min-w-full">
+                                        <div className="grid grid-cols-[1fr_70px_110px] gap-2 border-b bg-muted/30 px-4 py-2 text-xs font-medium text-muted-foreground">
+                                            <div>Item</div>
+                                            <div className="text-right">Qty</div>
+                                            <div className="text-right">Amount</div>
+                                        </div>
+                                        <div className="divide-y">
+                                            {lastReceipt.items.map((it, idx) => (
+                                                <div
+                                                    key={`${lastReceipt.ref}-${idx}`}
+                                                    className="grid grid-cols-[1fr_70px_110px] gap-2 px-4 py-2 text-sm"
+                                                >
+                                                    <div className="min-w-0 truncate">{it.name}</div>
+                                                    <div className="text-right tabular-nums">{it.qty}</div>
+                                                    <div className="text-right tabular-nums">{peso(it.lineTotal)}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid gap-2 rounded-md border p-4 text-sm">
+                                    <div className="flex justify-between gap-3 text-muted-foreground">
+                                        <span>Subtotal</span>
+                                        <span className="tabular-nums">{peso(lastReceipt.subtotal)}</span>
+                                    </div>
+                                    <div className="flex justify-between gap-3 font-semibold">
+                                        <span>Total</span>
+                                        <span className="tabular-nums">{peso(lastReceipt.total)}</span>
+                                    </div>
+                                    <div className="flex justify-between gap-3 text-muted-foreground">
+                                        <span>Received</span>
+                                        <span className="tabular-nums">{peso(lastReceipt.received)}</span>
+                                    </div>
+                                    <div className="flex justify-between gap-3 text-muted-foreground">
+                                        <span>Change</span>
+                                        <span className="tabular-nums">{peso(lastReceipt.change)}</span>
+                                    </div>
                                 </div>
                             </div>
-                        ))}
+                        )}
+
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setIsPreviewOpen(false)}>
+                                Close
+                            </Button>
+                            <Button
+                                onClick={() => {
+                                    if (!lastReceipt) return;
+                                    printReceipt(lastReceipt);
+                                }}
+                                disabled={!lastReceipt}
+                            >
+                                <Printer className="mr-2 h-4 w-4" />
+                                Reprint
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                {lastReceipt && (
+                    <div className="hidden" aria-hidden="true">
+                        {lastReceipt.ref}
                     </div>
                 )}
-            </section>
-
-            {lastReceipt && (
-                <div className="hidden" aria-hidden="true">
-                    {lastReceipt.ref}
-                </div>
-            )}
-        </div>
-       </AppLayout>
+            </div>
+        </AppLayout>
     );
 }
