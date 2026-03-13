@@ -406,19 +406,7 @@ export default function Inventory() {
         const totalUnits = filteredItems.reduce((sum, i) => sum + (conditionFilter === 'defective' ? i.defectiveQty : i.stock), 0);
         const totalValue = filteredItems.reduce((sum, i) => sum + ((conditionFilter === 'defective' ? i.defectiveQty : i.stock) * i.price), 0);
 
-        const categoryStats = filteredItems.reduce((acc, item) => {
-            const cat = item.category;
-            if (!acc[cat]) {
-                acc[cat] = { count: 0, totalStock: 0, totalValue: 0 };
-            }
-            acc[cat].count++;
-            const qty = conditionFilter === 'defective' ? item.defectiveQty : item.stock;
-            acc[cat].totalStock += qty;
-            acc[cat].totalValue += qty * item.price;
-            return acc;
-        }, {} as Record<string, { count: number; totalStock: number; totalValue: number }>);
-
-        return { totalSkus, lowStock, outOfStock, totalUnits, totalValue, categoryStats };
+        return { totalSkus, lowStock, outOfStock, totalUnits, totalValue };
     }, [conditionFilter, filteredItems]);
 
     const handleSort = (field: typeof sortBy) => {
@@ -527,10 +515,7 @@ export default function Inventory() {
                 </div>
 
                 <Tabs defaultValue="inventory" className="space-y-4">
-                    <TabsList>
-                        <TabsTrigger value="inventory">Inventory</TabsTrigger>
-                        <TabsTrigger value="analytics">Analytics</TabsTrigger>
-                    </TabsList>
+                    
 
                     <TabsContent value="inventory" className="space-y-4">
                         {/* Filters and Search */}
@@ -762,29 +747,6 @@ export default function Inventory() {
                         </Card>
                     </TabsContent>
 
-                    <TabsContent value="analytics" className="space-y-4">
-                        <div className="grid gap-6 lg:grid-cols-2">
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Category Distribution</CardTitle>
-                                    <CardDescription>Products by category</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <CategoryAnalytics categoryStats={stats.categoryStats} />
-                                </CardContent>
-                            </Card>
-
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Stock Levels</CardTitle>
-                                    <CardDescription>Current inventory status</CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <StockAnalytics items={filteredItems} />
-                                </CardContent>
-                            </Card>
-                        </div>
-                    </TabsContent>
                 </Tabs>
             </div>
 
@@ -799,7 +761,7 @@ export default function Inventory() {
                     }
                 }}
             >
-                <DialogContent className="sm:max-w-sm">
+                <DialogContent className="sm:max-w-3xl">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <Plus className="h-5 w-5 text-green-600" />
@@ -811,79 +773,83 @@ export default function Inventory() {
                     </DialogHeader>
 
                     {restockItem && (
-                        <div className="space-y-4">
-                            <div className="flex items-center gap-3 rounded-lg border bg-muted/50 p-3">
-                                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 dark:bg-green-950">
-                                    <Package className="h-5 w-5 text-green-600" />
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-3 rounded-lg border bg-muted/50 p-3">
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 dark:bg-green-950">
+                                        <Package className="h-5 w-5 text-green-600" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <div className="font-medium text-sm truncate">{restockItem.name}</div>
+                                        <div className="text-xs text-muted-foreground">
+                                            SKU: {restockItem.sku} · {restockItem.branch}
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="min-w-0 flex-1">
-                                    <div className="font-medium text-sm truncate">{restockItem.name}</div>
-                                    <div className="text-xs text-muted-foreground">
-                                        SKU: {restockItem.sku} · {restockItem.branch}
+
+                                <div className="rounded-lg border p-3 space-y-2">
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span className="text-muted-foreground">Current Stock</span>
+                                        <span className="font-semibold">{restockItem.stock} units</span>
+                                    </div>
+                                    <Progress
+                                        value={restockItem.maxStock > 0 ? Math.min(100, (restockItem.stock / restockItem.maxStock) * 100) : 0}
+                                        className="h-2"
+                                    />
+                                    <div className="flex justify-between text-xs text-muted-foreground">
+                                        <span>Min: {restockItem.minStock}</span>
+                                        <span>Max: {restockItem.maxStock}</span>
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="rounded-lg border p-3 space-y-2">
-                                <div className="flex justify-between items-center text-sm">
-                                    <span className="text-muted-foreground">Current Stock</span>
-                                    <span className="font-semibold">{restockItem.stock} units</span>
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between rounded-lg border p-3">
+                                    <div>
+                                        <div className="text-sm font-medium">Add Quantity</div>
+                                        <div className="text-xs text-muted-foreground">Units to add to current stock</div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <Button
+                                            variant="outline"
+                                            size="icon"
+                                            className="h-8 w-8"
+                                            onClick={() => setRestockQty((q) => Math.max(1, q - 1))}
+                                            disabled={restockQty <= 1}
+                                        >
+                                            <Minus className="h-3.5 w-3.5" />
+                                        </Button>
+                                        <Input
+                                            type="number"
+                                            min={1}
+                                            value={restockQty}
+                                            onChange={(e) => setRestockQty(Math.max(1, Number(e.target.value) || 1))}
+                                            className="h-8 w-16 text-center"
+                                        />
+                                        <Button
+                                            variant="outline"
+                                            size="icon"
+                                            className="h-8 w-8"
+                                            onClick={() => setRestockQty((q) => q + 1)}
+                                        >
+                                            <Plus className="h-3.5 w-3.5" />
+                                        </Button>
+                                    </div>
                                 </div>
-                                <Progress
-                                    value={restockItem.maxStock > 0 ? Math.min(100, (restockItem.stock / restockItem.maxStock) * 100) : 0}
-                                    className="h-2"
-                                />
-                                <div className="flex justify-between text-xs text-muted-foreground">
-                                    <span>Min: {restockItem.minStock}</span>
-                                    <span>Max: {restockItem.maxStock}</span>
-                                </div>
-                            </div>
 
-                            <div className="flex items-center justify-between rounded-lg border p-3">
-                                <div>
-                                    <div className="text-sm font-medium">Add Quantity</div>
-                                    <div className="text-xs text-muted-foreground">Units to add to current stock</div>
+                                <div className="flex items-center justify-between rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 p-3">
+                                    <span className="text-sm text-green-700 dark:text-green-400">Stock after restock</span>
+                                    <span className="text-sm font-bold text-green-700 dark:text-green-400">
+                                        {restockItem.stock + restockQty} units
+                                    </span>
                                 </div>
-                                <div className="flex items-center gap-2">
-                                    <Button
-                                        variant="outline"
-                                        size="icon"
-                                        className="h-8 w-8"
-                                        onClick={() => setRestockQty((q) => Math.max(1, q - 1))}
-                                        disabled={restockQty <= 1}
-                                    >
-                                        <Minus className="h-3.5 w-3.5" />
-                                    </Button>
-                                    <Input
-                                        type="number"
-                                        min={1}
-                                        value={restockQty}
-                                        onChange={(e) => setRestockQty(Math.max(1, Number(e.target.value) || 1))}
-                                        className="h-8 w-16 text-center"
-                                    />
-                                    <Button
-                                        variant="outline"
-                                        size="icon"
-                                        className="h-8 w-8"
-                                        onClick={() => setRestockQty((q) => q + 1)}
-                                    >
-                                        <Plus className="h-3.5 w-3.5" />
-                                    </Button>
-                                </div>
-                            </div>
 
-                            <div className="flex items-center justify-between rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 p-3">
-                                <span className="text-sm text-green-700 dark:text-green-400">Stock after restock</span>
-                                <span className="text-sm font-bold text-green-700 dark:text-green-400">
-                                    {restockItem.stock + restockQty} units
-                                </span>
+                                {actionError && (
+                                    <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                                        {actionError}
+                                    </div>
+                                )}
                             </div>
-
-                            {actionError && (
-                                <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                                    {actionError}
-                                </div>
-                            )}
                         </div>
                     )}
 
@@ -901,7 +867,7 @@ export default function Inventory() {
 
             {/* Product Details Dialog */}
             <Dialog open={!!detailsItem} onOpenChange={(open) => { if (!open) setDetailsItem(null); }}>
-                <DialogContent className="sm:max-w-md">
+                <DialogContent className="sm:max-w-3xl">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <Info className="h-5 w-5" />
@@ -914,16 +880,38 @@ export default function Inventory() {
                         const stockPct = Math.min(100, (detailsItem.stock / detailsItem.maxStock) * 100);
                         const imgUrl = productImageUrl(detailsItem.imagePath);
                         return (
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-center rounded-lg bg-muted p-6">
-                                    {imgUrl ? (
-                                        <img src={imgUrl} alt={detailsItem.name} className="h-24 w-24 rounded-xl object-cover border" />
-                                    ) : (
-                                        <div className="h-16 w-16 rounded-xl bg-orange-100 flex items-center justify-center dark:bg-orange-950">
-                                            <Package className="h-8 w-8 text-orange-600" />
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-center rounded-lg bg-muted p-6">
+                                        {imgUrl ? (
+                                            <img src={imgUrl} alt={detailsItem.name} className="h-24 w-24 rounded-xl object-cover border" />
+                                        ) : (
+                                            <div className="h-16 w-16 rounded-xl bg-orange-100 flex items-center justify-center dark:bg-orange-950">
+                                                <Package className="h-8 w-8 text-orange-600" />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="rounded-lg border p-3 space-y-2">
+                                        <div className="flex justify-between items-center text-sm">
+                                            <span className="text-muted-foreground">Sellable Stock</span>
+                                            <div className="flex items-center gap-2">
+                                                <Badge variant={getStockStatusColor(stockStatus)} className="gap-1">
+                                                    <StatusIcon className="h-3 w-3" />
+                                                    {stockStatus.replace('-', ' ')}
+                                                </Badge>
+                                                <span className="text-sm font-medium">{detailsItem.stock} / {detailsItem.maxStock}</span>
+                                            </div>
                                         </div>
-                                    )}
+                                        <Progress value={stockPct} className="h-2" />
+                                        <div className="flex justify-between text-xs text-muted-foreground">
+                                            <span>Min: {detailsItem.minStock}</span>
+                                            <span>Reorder at: {detailsItem.reorderLevel}</span>
+                                            <span>Max: {detailsItem.maxStock}</span>
+                                        </div>
+                                    </div>
                                 </div>
+
                                 <div className="space-y-3">
                                     <div className="flex justify-between items-center">
                                         <span className="text-sm text-muted-foreground">Name</span>
@@ -948,25 +936,6 @@ export default function Inventory() {
                                     <div className="flex justify-between items-center">
                                         <span className="text-sm text-muted-foreground">Price</span>
                                         <span className="text-sm font-semibold text-primary">₱{detailsItem.price.toFixed(2)}</span>
-                                    </div>
-                                    <div className="border-t" />
-                                    <div className="space-y-1">
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-sm text-muted-foreground">Sellable Stock</span>
-                                            <div className="flex items-center gap-2">
-                                                <Badge variant={getStockStatusColor(stockStatus)} className="gap-1">
-                                                    <StatusIcon className="h-3 w-3" />
-                                                    {stockStatus.replace('-', ' ')}
-                                                </Badge>
-                                                <span className="text-sm font-medium">{detailsItem.stock} / {detailsItem.maxStock}</span>
-                                            </div>
-                                        </div>
-                                        <Progress value={stockPct} className="h-2" />
-                                        <div className="flex justify-between text-xs text-muted-foreground">
-                                            <span>Min: {detailsItem.minStock}</span>
-                                            <span>Reorder at: {detailsItem.reorderLevel}</span>
-                                            <span>Max: {detailsItem.maxStock}</span>
-                                        </div>
                                     </div>
                                     <div className="border-t" />
                                     <div className="flex justify-between items-center">
@@ -1115,83 +1084,5 @@ export default function Inventory() {
                 </DialogContent>
             </Dialog>
         </AppLayout>
-    );
-}
-
-function CategoryAnalytics({
-    categoryStats,
-}: {
-    categoryStats: Record<string, { count: number; totalStock: number; totalValue: number }>;
-}) {
-    const categories = Object.entries(categoryStats);
-    const totalValue = categories.reduce((sum, [, data]) => sum + data.totalValue, 0);
-
-    return (
-        <div className="space-y-4">
-            {categories.map(([category, data]) => {
-                const percentage = totalValue > 0 ? (data.totalValue / totalValue) * 100 : 0;
-                return (
-                    <div key={category} className="space-y-2">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <div className="font-medium">{category}</div>
-                                <div className="text-sm text-muted-foreground">
-                                    {data.count} products • {data.totalStock} units
-                                </div>
-                            </div>
-                            <div className="text-right">
-                                <div className="font-semibold">₱{data.totalValue.toLocaleString()}</div>
-                                <div className="text-sm text-muted-foreground">{percentage.toFixed(1)}%</div>
-                            </div>
-                        </div>
-                        <Progress value={percentage} className="h-2" />
-                    </div>
-                );
-            })}
-        </div>
-    );
-}
-
-function StockAnalytics({ items }: { items: InventoryItem[] }) {
-    const inStock = items.filter((item) => item.stock > item.minStock).length;
-    const lowStock = items.filter((item) => item.stock > 0 && item.stock <= item.minStock).length;
-    const outOfStock = items.filter((item) => item.stock === 0).length;
-    const total = items.length;
-
-    const stockData = [
-        { label: 'In Stock', value: inStock, color: 'bg-green-500', percentage: total > 0 ? (inStock / total) * 100 : 0 },
-        { label: 'Low Stock', value: lowStock, color: 'bg-orange-500', percentage: total > 0 ? (lowStock / total) * 100 : 0 },
-        { label: 'Out of Stock', value: outOfStock, color: 'bg-red-500', percentage: total > 0 ? (outOfStock / total) * 100 : 0 },
-    ];
-
-    return (
-        <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-4">
-                {stockData.map((data) => (
-                    <div key={data.label} className="text-center">
-                        <div className={`h-3 w-3 rounded-full ${data.color} mx-auto mb-2`} />
-                        <div className="text-2xl font-bold">{data.value}</div>
-                        <div className="text-sm text-muted-foreground">{data.label}</div>
-                        <div className="text-xs text-muted-foreground">{data.percentage.toFixed(1)}%</div>
-                    </div>
-                ))}
-            </div>
-            <div className="space-y-2">
-                {stockData.map((data) => (
-                    <div key={data.label} className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <div className={`h-2 w-2 rounded-full ${data.color}`} />
-                            <span className="text-sm">{data.label}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <span className="text-sm font-medium">{data.value}</span>
-                            <div className="w-20 bg-muted rounded-full h-2">
-                                <div className={`h-2 rounded-full ${data.color}`} style={{ width: `${data.percentage}%` }} />
-                            </div>
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
     );
 }

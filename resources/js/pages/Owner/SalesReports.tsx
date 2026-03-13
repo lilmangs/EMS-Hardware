@@ -123,8 +123,31 @@ export default function SalesReports() {
         if (!iso) return '—';
         const d = new Date(iso);
         if (Number.isNaN(d.getTime())) return iso;
-        return d.toLocaleString();
+        return d.toLocaleString(undefined, {
+            year: 'numeric',
+            month: 'short',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true,
+        });
     }, []);
+
+    const formatTrendTick = useCallback((label: unknown) => {
+        if (label === null || label === undefined) return '';
+        const raw = String(label);
+        const d = new Date(raw);
+        if (Number.isNaN(d.getTime())) return raw;
+        return d.toLocaleDateString(undefined, {
+            month: 'short',
+            day: '2-digit',
+            year: 'numeric',
+        });
+    }, []);
+
+    const formatTrendTooltipLabel = useCallback((label: unknown) => {
+        return formatTrendTick(label);
+    }, [formatTrendTick]);
 
     const branchLabel = useCallback((k: 'lagonglong' | 'balingasag') => {
         return k === 'lagonglong' ? 'Lagonglong' : 'Balingasag';
@@ -134,7 +157,7 @@ export default function SalesReports() {
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Sales Reports" />
             <div className="space-y-6 p-6">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div>
                         <h1 className="text-3xl font-bold">Sales Reports</h1>
                         <p className="text-muted-foreground">Sales totals and recent transactions</p>
@@ -146,19 +169,6 @@ export default function SalesReports() {
                         {error}
                     </div>
                 )}
-
-                <div className="flex items-center gap-4">
-                    <Select value={range} onValueChange={(value: any) => setRange(value)}>
-                        <SelectTrigger className="w-[140px]">
-                            <SelectValue placeholder="Time Range" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="today">Today</SelectItem>
-                            <SelectItem value="week">This Week</SelectItem>
-                            <SelectItem value="month">This Month</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
 
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                     <Card>
@@ -207,18 +217,36 @@ export default function SalesReports() {
                 </div>
 
                 <Card>
-                    <CardHeader>
-                        <CardTitle>Sales Trend</CardTitle>
-                        <CardDescription>Revenue over the selected range.</CardDescription>
+                    <CardHeader className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div className="space-y-1">
+                            <CardTitle>Sales Trend</CardTitle>
+                            <CardDescription>Revenue over the selected range.</CardDescription>
+                        </div>
+                        <Select value={range} onValueChange={(value: any) => setRange(value)}>
+                            <SelectTrigger className="w-[140px]">
+                                <SelectValue placeholder="Time Range" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="today">Today</SelectItem>
+                                <SelectItem value="week">This Week</SelectItem>
+                                <SelectItem value="month">This Month</SelectItem>
+                            </SelectContent>
+                        </Select>
                     </CardHeader>
                     <CardContent>
                         <div className="h-72 w-full min-w-0">
                             <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                                 <BarChart data={trend} margin={{ top: 10, right: 18, left: 0, bottom: 10 }}>
                                     <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="label" tick={{ fontSize: 12 }} interval="preserveStartEnd" />
+                                    <XAxis
+                                        dataKey="label"
+                                        tick={{ fontSize: 12 }}
+                                        interval="preserveStartEnd"
+                                        tickFormatter={formatTrendTick}
+                                    />
                                     <YAxis tick={{ fontSize: 12 }} width={60} />
                                     <Tooltip
+                                        labelFormatter={formatTrendTooltipLabel}
                                         formatter={(value: any) => {
                                             const n = Number(value) || 0;
                                             return [`₱${n.toLocaleString()}`, 'Revenue'];
@@ -252,7 +280,7 @@ export default function SalesReports() {
                                         <TableHead className="text-right">Items</TableHead>
                                         <TableHead className="text-right">Subtotal</TableHead>
                                         <TableHead className="text-right">Total</TableHead>
-                                        <TableHead>Date</TableHead>
+                                        <TableHead className="pl-10 min-w-[180px]">Date</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
@@ -263,7 +291,7 @@ export default function SalesReports() {
                                             <TableCell className="text-right tabular-nums">{t.items}</TableCell>
                                             <TableCell className="text-right tabular-nums">₱{Number(t.subtotal || 0).toLocaleString()}</TableCell>
                                             <TableCell className="text-right font-medium tabular-nums">₱{Number(t.total || 0).toLocaleString()}</TableCell>
-                                            <TableCell className="text-muted-foreground">{formatDateTime(t.created_at)}</TableCell>
+                                            <TableCell className="pl-10 min-w-[180px] text-muted-foreground">{formatDateTime(t.created_at)}</TableCell>
                                         </TableRow>
                                     ))}
 

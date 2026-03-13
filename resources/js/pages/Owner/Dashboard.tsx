@@ -1,4 +1,4 @@
-import { Head } from '@inertiajs/react';
+import { Head, router } from '@inertiajs/react';
 import { 
     AlertTriangle, 
     BarChart3, 
@@ -26,7 +26,7 @@ import {
     Plus
 } from 'lucide-react';
 import type { ComponentType } from 'react';
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -43,47 +43,82 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ];
 
+type DashboardData = {
+    filters: { branch_key: 'all' | 'lagonglong' | 'balingasag'; range: 'today' | 'week' | 'month'; from: string; to: string };
+    sales: {
+        revenue: number;
+        orders: number;
+        growth: number;
+        by_branch: Array<{ branch_key: 'lagonglong' | 'balingasag'; label: string; revenue: number }>;
+    };
+    inventory: { total: number; low_stock: number; out_of_stock: number; categories: number };
+    deliveries: { preparing: number; out_for_delivery: number; delivered: number; delayed: number };
+    staff: { total: number; active: number; on_leave: number; online: number };
+    activity: Array<{ id: number; title: string; description: string; time: string; branch: string; category?: string | null }>;
+    alerts: Array<{ title: string; description: string; severity: 'critical' | 'warning' | string; branch: string; action_label: string; href: string }>;
+    category_performance: Array<{ name: string; sales: number }>;
+};
+
 export default function Dashboard() {
     const { branch } = useBranchFilter();
     const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month'>('today');
 
-    // Enhanced data with more realistic metrics
-    const dashboardData = useMemo(() => ({
-        todaySales: { 
-            lagonglong: 28450, 
-            balingasag: 19200, 
-            total: 47650,
-            growth: 12.5,
-            orders: 89
-        },
-        inventory: {
-            total: 1247,
-            lowStock: 23,
-            outOfStock: 4,
-            categories: 8
-        },
-        deliveries: {
-            pending: 18,
-            inTransit: 12,
-            delivered: 156,
-            delayed: 3
-        },
-        staff: {
-            total: 12,
-            active: 10,
-            onLeave: 2,
-            online: 8
-        }
-    }), []);
+    const [data, setData] = useState<DashboardData | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState('');
 
-    const getSalesGrowth = () => {
-        const growth = dashboardData.todaySales.growth;
+    const fetchData = useCallback(async () => {
+        setIsLoading(true);
+        try {
+            setError('');
+            const params = new URLSearchParams();
+            params.set('branch_key', branch);
+            params.set('range', timeRange);
+            const res = await fetch(`/owner/dashboard/data?${params.toString()}`, {
+                headers: { Accept: 'application/json' },
+                credentials: 'same-origin',
+                cache: 'no-store',
+            });
+            if (!res.ok) throw new Error('Failed to load dashboard');
+            const json = (await res.json()) as DashboardData;
+            setData(json);
+        } catch (e: any) {
+            setError(e?.message ? String(e.message) : 'Failed to load dashboard');
+        } finally {
+            setIsLoading(false);
+        }
+    }, [branch, timeRange]);
+
+    useEffect(() => {
+        fetchData();
+    }, [fetchData]);
+
+    const salesGrowth = useMemo(() => {
+        const growth = data?.sales.growth ?? 0;
         return {
             value: growth,
             isPositive: growth > 0,
-            text: `${growth > 0 ? '+' : ''}${growth}% from yesterday`
+            text: `${growth > 0 ? '+' : ''}${growth}% from previous period`,
         };
-    };
+    }, [data?.sales.growth]);
+
+    const totalSales = data?.sales.revenue ?? 0;
+    const totalOrders = data?.sales.orders ?? 0;
+
+    const invTotal = data?.inventory.total ?? 0;
+    const invLow = data?.inventory.low_stock ?? 0;
+    const invOut = data?.inventory.out_of_stock ?? 0;
+    const invCategories = data?.inventory.categories ?? 0;
+
+    const delPreparing = data?.deliveries.preparing ?? 0;
+    const delOut = data?.deliveries.out_for_delivery ?? 0;
+    const delDelivered = data?.deliveries.delivered ?? 0;
+    const delDelayed = data?.deliveries.delayed ?? 0;
+
+    const staffTotal = data?.staff.total ?? 0;
+    const staffActive = data?.staff.active ?? 0;
+    const staffOnLeave = data?.staff.on_leave ?? 0;
+    const staffOnline = data?.staff.online ?? 0;
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -106,108 +141,114 @@ export default function Dashboard() {
                     </div>
                 </div>
 
+                {error && (
+                    <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+                        {error}
+                    </div>
+                )}
+
                 {/* Enhanced Stat Cards */}
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                    <Card>
+                    <Card className="cursor-pointer" onClick={() => router.visit('/SalesReports')}>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-medium">Today's Sales</CardTitle>
                             <DollarSign className="h-4 w-4 text-muted-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">₱{dashboardData.todaySales.total.toLocaleString()}</div>
+                            <div className="text-2xl font-bold">₱{totalSales.toLocaleString()}</div>
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                <span>{dashboardData.todaySales.orders} orders</span>
+                                <span>{isLoading ? '…' : totalOrders} orders</span>
                                 <span>•</span>
                                 <div className="flex items-center gap-1">
-                                    {getSalesGrowth().isPositive ? (
+                                    {salesGrowth.isPositive ? (
                                         <ArrowUpRight className="h-3 w-3 text-green-600" />
                                     ) : (
                                         <ArrowDownRight className="h-3 w-3 text-red-600" />
                                     )}
-                                    <span className={getSalesGrowth().isPositive ? "text-green-600" : "text-red-600"}>
-                                        {getSalesGrowth().text}
+                                    <span className={salesGrowth.isPositive ? "text-green-600" : "text-red-600"}>
+                                        {salesGrowth.text}
                                     </span>
                                 </div>
                             </div>
                             <div className="mt-2 flex gap-2 text-xs">
-                                <span className="text-muted-foreground">Lagonglong: ₱{dashboardData.todaySales.lagonglong.toLocaleString()}</span>
-                                <span className="text-muted-foreground">Balingasag: ₱{dashboardData.todaySales.balingasag.toLocaleString()}</span>
+                                <span className="text-muted-foreground">Lagonglong: ₱{(data?.sales.by_branch.find((b) => b.branch_key === 'lagonglong')?.revenue ?? 0).toLocaleString()}</span>
+                                <span className="text-muted-foreground">Balingasag: ₱{(data?.sales.by_branch.find((b) => b.branch_key === 'balingasag')?.revenue ?? 0).toLocaleString()}</span>
                             </div>
                         </CardContent>
                     </Card>
 
-                    <Card>
+                    <Card className="cursor-pointer" onClick={() => router.visit('/inventory')}>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-medium">Inventory Status</CardTitle>
                             <Package className="h-4 w-4 text-muted-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">{dashboardData.inventory.total}</div>
+                            <div className="text-2xl font-bold">{isLoading ? '…' : invTotal}</div>
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                 <span>Total items</span>
                                 <span>•</span>
-                                <span>{dashboardData.inventory.categories} categories</span>
+                                <span>{isLoading ? '…' : invCategories} categories</span>
                             </div>
                             <div className="mt-2 space-y-1">
                                 <div className="flex items-center justify-between text-xs">
                                     <span className="text-orange-600">Low Stock</span>
-                                    <span className="font-medium">{dashboardData.inventory.lowStock}</span>
+                                    <span className="font-medium">{isLoading ? '…' : invLow}</span>
                                 </div>
                                 <div className="flex items-center justify-between text-xs">
                                     <span className="text-red-600">Out of Stock</span>
-                                    <span className="font-medium">{dashboardData.inventory.outOfStock}</span>
+                                    <span className="font-medium">{isLoading ? '…' : invOut}</span>
                                 </div>
                             </div>
                         </CardContent>
                     </Card>
 
-                    <Card>
+                    <Card className="cursor-pointer" onClick={() => router.visit('/owner/delivery-monitoring')}>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-medium">Delivery Status</CardTitle>
                             <Truck className="h-4 w-4 text-muted-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">{dashboardData.deliveries.pending + dashboardData.deliveries.inTransit}</div>
+                            <div className="text-2xl font-bold">{isLoading ? '…' : delPreparing + delOut}</div>
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                 <span>Pending deliveries</span>
                                 <span>•</span>
-                                <span>{dashboardData.deliveries.delivered} delivered today</span>
+                                <span>{isLoading ? '…' : delDelivered} delivered</span>
                             </div>
                             <div className="mt-2 space-y-1">
                                 <div className="flex items-center justify-between text-xs">
                                     <span className="text-blue-600">In Transit</span>
-                                    <span className="font-medium">{dashboardData.deliveries.inTransit}</span>
+                                    <span className="font-medium">{isLoading ? '…' : delOut}</span>
                                 </div>
                                 <div className="flex items-center justify-between text-xs">
                                     <span className="text-red-600">Delayed</span>
-                                    <span className="font-medium">{dashboardData.deliveries.delayed}</span>
+                                    <span className="font-medium">{isLoading ? '…' : delDelayed}</span>
                                 </div>
                             </div>
                         </CardContent>
                     </Card>
 
-                    <Card>
+                    <Card className="cursor-pointer" onClick={() => router.visit('/owner/staff-monitoring')}>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-medium">Staff Activity</CardTitle>
                             <Users className="h-4 w-4 text-muted-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">{dashboardData.staff.online}/{dashboardData.staff.total}</div>
+                            <div className="text-2xl font-bold">{isLoading ? '…' : staffOnline}/{isLoading ? '…' : staffTotal}</div>
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                 <span>Online now</span>
                                 <span>•</span>
-                                <span>{dashboardData.staff.active} active today</span>
+                                <span>{isLoading ? '…' : staffActive} active</span>
                             </div>
                             <div className="mt-2">
                                 <div className="flex -space-x-2">
-                                    {[...Array(Math.min(dashboardData.staff.online, 5))].map((_, i) => (
+                                    {[...Array(Math.min(staffOnline, 5))].map((_, i) => (
                                         <div key={i} className="h-6 w-6 rounded-full bg-green-500 border-2 border-background flex items-center justify-center">
                                             <div className="h-2 w-2 rounded-full bg-white" />
                                         </div>
                                     ))}
-                                    {dashboardData.staff.online > 5 && (
+                                    {staffOnline > 5 && (
                                         <div className="h-6 w-6 rounded-full bg-muted border-2 border-background flex items-center justify-center text-xs">
-                                            +{dashboardData.staff.online - 5}
+                                            +{staffOnline - 5}
                                         </div>
                                     )}
                                 </div>
@@ -227,7 +268,7 @@ export default function Dashboard() {
                             <CardDescription>Revenue comparison across branches</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <EnhancedSalesChart branch={branch} timeRange={timeRange} />
+                            <EnhancedSalesChart branch={branch} timeRange={timeRange} data={data?.sales.by_branch ?? []} isLoading={isLoading} />
                         </CardContent>
                     </Card>
 
@@ -240,7 +281,7 @@ export default function Dashboard() {
                             <CardDescription>Top performing product categories</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <EnhancedCategoriesChart />
+                            <EnhancedCategoriesChart data={data?.category_performance ?? []} isLoading={isLoading} />
                         </CardContent>
                     </Card>
                 </div>
@@ -257,14 +298,14 @@ export default function Dashboard() {
                                     </CardTitle>
                                     <CardDescription>Latest system events and updates</CardDescription>
                                 </div>
-                                <Button variant="outline" size="sm">
+                                <Button variant="outline" size="sm" onClick={() => router.visit('/ActivityLog')}>
                                     <Eye className="h-4 w-4 mr-2" />
                                     View All
                                 </Button>
                             </div>
                         </CardHeader>
                         <CardContent>
-                            <EnhancedActivityList />
+                            <EnhancedActivityList activities={data?.activity ?? []} isLoading={isLoading} />
                         </CardContent>
                     </Card>
 
@@ -278,11 +319,11 @@ export default function Dashboard() {
                                     </CardTitle>
                                     <CardDescription>Items requiring attention</CardDescription>
                                 </div>
-                                <Badge variant="destructive">{dashboardData.inventory.lowStock + dashboardData.inventory.outOfStock}</Badge>
+                                <Badge variant="destructive">{(data?.inventory.low_stock ?? 0) + (data?.inventory.out_of_stock ?? 0)}</Badge>
                             </div>
                         </CardHeader>
                         <CardContent>
-                            <EnhancedAlertsList />
+                            <EnhancedAlertsList alerts={data?.alerts ?? []} isLoading={isLoading} />
                         </CardContent>
                     </Card>
                 </div>
@@ -306,29 +347,40 @@ export default function Dashboard() {
 }
 
 // Enhanced Chart Components
-function EnhancedSalesChart({ branch, timeRange }: { branch: string; timeRange: string }) {
-    const data = useMemo(() => {
-        const baseData = [
-            { label: 'Lagonglong', value: 28450, color: '#3b82f6' },
-            { label: 'Balingasag', value: 19200, color: '#10b981' },
-        ];
+function EnhancedSalesChart({
+    branch,
+    timeRange,
+    data,
+    isLoading,
+}: {
+    branch: string;
+    timeRange: string;
+    data: Array<{ branch_key: 'lagonglong' | 'balingasag'; label: string; revenue: number }>;
+    isLoading: boolean;
+}) {
+    const rows = useMemo(() => {
+        const base = data.map((d) => ({
+            label: d.label,
+            value: Number(d.revenue) || 0,
+            color: d.branch_key === 'lagonglong' ? '#3b82f6' : '#10b981',
+        }));
 
-        if (branch === 'all') return baseData;
-        if (branch === 'lagonglong') return baseData.filter((d) => d.label === 'Lagonglong');
-        if (branch === 'balingasag') return baseData.filter((d) => d.label === 'Balingasag');
-        return baseData;
-    }, [branch]);
+        if (branch === 'all') return base;
+        if (branch === 'lagonglong') return base.filter((d) => d.label === 'Lagonglong');
+        if (branch === 'balingasag') return base.filter((d) => d.label === 'Balingasag');
+        return base;
+    }, [branch, data]);
 
-    const maxValue = Math.max(...data.map(d => d.value));
+    const maxValue = Math.max(1, ...rows.map((d) => d.value));
 
     return (
         <div className="space-y-4">
             <div className="grid gap-4">
-                {data.map((item) => (
+                {rows.map((item) => (
                     <div key={item.label} className="space-y-2">
                         <div className="flex items-center justify-between text-sm">
                             <span className="font-medium">{item.label}</span>
-                            <span className="font-bold">₱{item.value.toLocaleString()}</span>
+                            <span className="font-bold">₱{isLoading ? '…' : item.value.toLocaleString()}</span>
                         </div>
                         <Progress 
                             value={(item.value / maxValue) * 100} 
@@ -342,20 +394,26 @@ function EnhancedSalesChart({ branch, timeRange }: { branch: string; timeRange: 
             </div>
             <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t">
                 <span>Total Revenue</span>
-                <span className="font-semibold">₱{data.reduce((sum, item) => sum + item.value, 0).toLocaleString()}</span>
+                <span className="font-semibold">₱{rows.reduce((sum, item) => sum + item.value, 0).toLocaleString()}</span>
             </div>
         </div>
     );
 }
 
-function EnhancedCategoriesChart() {
-    const categories = [
-        { name: 'Hand Tools', value: 35, color: '#06b6d4', sales: 12450 },
-        { name: 'Power Tools', value: 28, color: '#a855f7', sales: 9980 },
-        { name: 'Fasteners', value: 18, color: '#84cc16', sales: 6420 },
-        { name: 'Paint Supplies', value: 12, color: '#f59e0b', sales: 4280 },
-        { name: 'Safety Equipment', value: 7, color: '#ef4444', sales: 2490 },
-    ];
+function EnhancedCategoriesChart({ data, isLoading }: { data: Array<{ name: string; sales: number }>; isLoading: boolean }) {
+    const categories = useMemo(() => {
+        const base = data.map((c, idx) => ({
+            name: c.name,
+            sales: Number(c.sales) || 0,
+            color: ['#06b6d4', '#a855f7', '#84cc16', '#f59e0b', '#ef4444'][idx % 5],
+        }));
+
+        const total = base.reduce((sum, c) => sum + c.sales, 0) || 1;
+        return base.map((c) => ({
+            ...c,
+            value: Math.round((c.sales / total) * 100),
+        }));
+    }, [data]);
 
     return (
         <div className="space-y-4">
@@ -369,7 +427,7 @@ function EnhancedCategoriesChart() {
                             />
                             <div>
                                 <div className="text-sm font-medium">{category.name}</div>
-                                <div className="text-xs text-muted-foreground">₱{category.sales.toLocaleString()}</div>
+                                <div className="text-xs text-muted-foreground">₱{isLoading ? '…' : category.sales.toLocaleString()}</div>
                             </div>
                         </div>
                         <div className="text-right">
@@ -391,64 +449,44 @@ function EnhancedCategoriesChart() {
     );
 }
 
-function EnhancedActivityList() {
-    const activities = [
-        {
-            title: 'New sale completed',
-            description: 'Maria Garcia processed ₱2,450 order',
-            time: '2 minutes ago',
-            icon: ShoppingCart,
-            color: 'text-green-600',
-            branch: 'Lagonglong'
-        },
-        {
-            title: 'Low stock alert',
-            description: 'Electric Drill below threshold (5 units)',
-            time: '15 minutes ago',
-            icon: AlertTriangle,
-            color: 'text-orange-600',
-            branch: 'Balingasag'
-        },
-        {
-            title: 'Staff login',
-            description: 'Robert Chen started shift',
-            time: '1 hour ago',
-            icon: Users,
-            color: 'text-blue-600',
-            branch: 'Lagonglong'
-        },
-        {
-            title: 'Delivery completed',
-            description: 'Order #12345 delivered successfully',
-            time: '2 hours ago',
-            icon: Truck,
-            color: 'text-green-600',
-            branch: 'Balingasag'
-        },
-        {
-            title: 'Inventory updated',
-            description: 'Added 10 units of Hand Saw',
-            time: '3 hours ago',
-            icon: Package,
-            color: 'text-purple-600',
-            branch: 'Lagonglong'
-        },
-    ];
+function EnhancedActivityList({
+    activities,
+    isLoading,
+}: {
+    activities: Array<{ id: number; title: string; description: string; time: string; branch: string; category?: string | null }>;
+    isLoading: boolean;
+}) {
+    const rows = useMemo(() => {
+        return activities.map((a) => {
+            const cat = String(a.category || '').toLowerCase();
+            const icon = cat.includes('inventory')
+                ? Package
+                : cat.includes('delivery')
+                    ? Truck
+                    : cat.includes('sale')
+                        ? ShoppingCart
+                        : cat.includes('staff')
+                            ? Users
+                            : Activity;
+            const color = cat.includes('error') ? 'text-red-600' : 'text-muted-foreground';
+            return { ...a, icon, color };
+        });
+    }, [activities]);
 
     return (
         <div className="space-y-4">
-            {activities.map((activity, index) => {
-                const Icon = activity.icon;
+            {rows.map((activity) => {
+                const Icon = activity.icon as any;
                 return (
-                    <div key={index} className="flex items-start gap-3">
+                    <div key={activity.id} className="flex items-start gap-3">
                         <div className={`mt-0.5 ${activity.color}`}>
                             <Icon className="h-4 w-4" />
                         </div>
                         <div className="flex-1 min-w-0">
-                            <div className="text-sm font-medium">{activity.title}</div>
-                            <div className="text-xs text-muted-foreground">{activity.description}</div>
+                            <div className="text-sm font-medium">{isLoading ? 'Loading…' : activity.title}</div>
+                            <div className="text-xs text-muted-foreground">{isLoading ? '' : activity.description}</div>
                             <div className="flex items-center gap-2 mt-1">
-                                <span className="text-xs text-muted-foreground">{activity.time}</span>
+                                <span className="text-xs text-muted-foreground">{isLoading ? '' : activity.time}</span>
                                 <span className="text-xs text-muted-foreground">•</span>
                                 <Badge variant="outline" className="text-xs">{activity.branch}</Badge>
                             </div>
@@ -460,37 +498,13 @@ function EnhancedActivityList() {
     );
 }
 
-function EnhancedAlertsList() {
-    const alerts = [
-        {
-            title: 'Electric Drill',
-            description: 'Critical: Only 2 units remaining',
-            severity: 'critical',
-            branch: 'Lagonglong',
-            action: 'Reorder Now'
-        },
-        {
-            title: 'Hand Saw',
-            description: 'Low stock: 5 units remaining',
-            severity: 'warning',
-            branch: 'Balingasag',
-            action: 'View Details'
-        },
-        {
-            title: 'Delivery Delay',
-            description: 'Order #67890 delayed by 2 days',
-            severity: 'warning',
-            branch: 'Balingasag',
-            action: 'Contact Customer'
-        },
-        {
-            title: 'Power Drill',
-            description: 'Out of stock',
-            severity: 'critical',
-            branch: 'Lagonglong',
-            action: 'Urgent Restock'
-        },
-    ];
+function EnhancedAlertsList({
+    alerts,
+    isLoading,
+}: {
+    alerts: Array<{ title: string; description: string; severity: string; branch: string; action_label: string; href: string }>;
+    isLoading: boolean;
+}) {
 
     const getSeverityColor = (severity: string) => {
         switch (severity) {
@@ -503,7 +517,7 @@ function EnhancedAlertsList() {
     return (
         <div className="space-y-3">
             {alerts.map((alert, index) => (
-                <div key={index} className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
+                <div key={`${alert.title}-${index}`} className="flex items-center justify-between p-3 rounded-lg border bg-muted/30">
                     <div className="flex items-start gap-3">
                         <AlertTriangle className="h-4 w-4 text-orange-500 mt-0.5" />
                         <div className="flex-1 min-w-0">
@@ -512,8 +526,13 @@ function EnhancedAlertsList() {
                             <Badge variant="outline" className="text-xs mt-1">{alert.branch}</Badge>
                         </div>
                     </div>
-                    <Button size="sm" variant={getSeverityColor(alert.severity) as any}>
-                        {alert.action}
+                    <Button
+                        size="sm"
+                        variant={getSeverityColor(alert.severity) as any}
+                        onClick={() => router.visit(alert.href)}
+                        disabled={isLoading}
+                    >
+                        {alert.action_label}
                     </Button>
                 </div>
             ))}
@@ -542,7 +561,7 @@ function EnhancedQuickActions() {
             description: 'Update roles and permissions',
             icon: Users,
             color: 'bg-purple-500 hover:bg-purple-600',
-            href: '/StaffManagement'
+            href: '/owner/staff-monitoring'
         },
         {
             title: 'View Activity Log',

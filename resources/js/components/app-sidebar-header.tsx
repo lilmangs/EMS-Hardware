@@ -52,9 +52,11 @@ export function AppSidebarHeader() {
     return (
         <header className="fixed top-0 left-0 right-0 z-50 flex shrink-0 flex-col border-b border-sidebar-border/50 bg-background transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-auto">
             <div className="flex h-16 items-center gap-2 px-6 md:px-4">
-                <div className="flex items-center md:hidden">
-                    <SidebarTrigger />
-                </div>
+                {userRole !== 'delivery' && (
+                    <div className="flex items-center md:hidden">
+                        <SidebarTrigger />
+                    </div>
+                )}
                 <div className="ml-2 flex flex-1 items-center justify-between">
                     <div className="flex items-center gap-3">
                         <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-md bg-transparent">

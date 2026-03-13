@@ -435,30 +435,21 @@ export default function Refunds() {
 
                         <div className="mt-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                             <div className="text-sm text-muted-foreground">
-                                {data?.refunds?.from ? (
-                                    <>
-                                        Showing {data.refunds.from}–{data.refunds.to} of {data.refunds.total}
-                                    </>
-                                ) : (
-                                    <>Showing 0 results</>
-                                )}
+                                {data?.refunds
+                                    ? `Page ${data.refunds.current_page} of ${data.refunds.last_page} • ${data.refunds.total} total`
+                                    : ''}
                             </div>
 
                             <div className="flex items-center gap-2">
                                 <Button
                                     variant="outline"
-                                    size="sm"
                                     onClick={() => setPage((p) => Math.max(1, p - 1))}
                                     disabled={isLoading || (data?.refunds?.current_page ?? 1) <= 1}
                                 >
-                                    Prev
+                                    Previous
                                 </Button>
-                                <div className="text-sm text-muted-foreground">
-                                    Page {data?.refunds?.current_page ?? 1} of {data?.refunds?.last_page ?? 1}
-                                </div>
                                 <Button
                                     variant="outline"
-                                    size="sm"
                                     onClick={() => setPage((p) => p + 1)}
                                     disabled={
                                         isLoading ||

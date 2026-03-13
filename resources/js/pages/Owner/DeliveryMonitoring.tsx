@@ -7,6 +7,7 @@ import { useBranchFilter } from '@/hooks/use-branch-filter';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -43,6 +44,7 @@ type DeliveryRecord = {
     items: number;
     total: number;
     started_at: string;
+    proof_photo_url?: string | null;
 };
 
 type DeliveryMonitoringData = {
@@ -83,6 +85,20 @@ const toIsoDateTime = (raw: string) => {
     return s.replace(' ', 'T');
 };
 
+const formatReadableDateTime = (raw: string) => {
+    const iso = toIsoDateTime(raw);
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return raw;
+    return d.toLocaleString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+    });
+};
+
 export default function DeliveryMonitoring() {
     const { auth } = usePage<{ auth?: { user?: { role: string; branch_key: 'lagonglong' | 'balingasag' | null } } }>().props;
     const user = auth?.user ?? null;
@@ -103,11 +119,12 @@ export default function DeliveryMonitoring() {
 
     const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
     const [selectedDelivery, setSelectedDelivery] = useState<DeliveryRecord | null>(null);
-    const [statusFilters, setStatusFilters] = useState<Record<DeliveryStatus, boolean>>({
-        preparing: true,
-        out_for_delivery: true,
-        delivered: true,
-    });
+    const [statusFilter, setStatusFilter] = useState<'all' | DeliveryStatus>('all');
+
+    const [proofViewerUrl, setProofViewerUrl] = useState<string>('');
+
+    const [listPage, setListPage] = useState(1);
+    const listPerPage = 15;
 
     const fetchData = useCallback(async () => {
         const seq = ++fetchSeqRef.current;
@@ -148,8 +165,13 @@ export default function DeliveryMonitoring() {
     useEffect(() => {
         setSelectedDelivery(null);
         setData(null);
+        setListPage(1);
         fetchData();
     }, [fetchData]);
+
+    useEffect(() => {
+        setListPage(1);
+    }, [effectiveBranch, viewMode, statusFilter]);
 
     useEffect(() => {
         return () => {
@@ -161,8 +183,18 @@ export default function DeliveryMonitoring() {
 
     const deliveriesFiltered = useMemo(() => {
         const list = data?.deliveries ?? [];
-        return list.filter((d) => statusFilters[d.status]);
-    }, [data?.deliveries, statusFilters]);
+        if (statusFilter === 'all') return list;
+        return list.filter((d) => d.status === statusFilter);
+    }, [data?.deliveries, statusFilter]);
+
+    const listPagination = useMemo(() => {
+        const total = deliveriesFiltered.length;
+        const lastPage = Math.max(1, Math.ceil(total / listPerPage));
+        const page = Math.min(Math.max(1, listPage), lastPage);
+        const startIndex = (page - 1) * listPerPage;
+        const items = deliveriesFiltered.slice(startIndex, startIndex + listPerPage);
+        return { total, lastPage, page, items };
+    }, [deliveriesFiltered, listPage]);
 
     const events = useMemo(() => {
         return deliveriesFiltered.map((d) => {
@@ -227,7 +259,7 @@ export default function DeliveryMonitoring() {
     }, []);
 
     const toggleStatus = (s: DeliveryStatus) => {
-        setStatusFilters((prev) => ({ ...prev, [s]: !prev[s] }));
+        setStatusFilter(s);
     };
 
     const updateSelectedStatus = (next: DeliveryStatus) => {
@@ -352,46 +384,31 @@ export default function DeliveryMonitoring() {
                     </CardHeader>
                     <CardContent>
                         <div className="space-y-4">
-                            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                                <Tabs value={viewMode} onValueChange={(v: any) => setViewMode(v)}>
+                            <Tabs value={viewMode} onValueChange={(v: any) => setViewMode(v)}>
+                                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                                     <TabsList>
                                         <TabsTrigger value="list">List View</TabsTrigger>
                                         <TabsTrigger value="calendar">Calendar View</TabsTrigger>
                                     </TabsList>
-                                </Tabs>
 
-                                <div className="flex flex-wrap items-center gap-2">
-                                    <Button
-                                        type="button"
-                                        variant={statusFilters.preparing ? 'secondary' : 'outline'}
-                                        size="sm"
-                                        onClick={() => toggleStatus('preparing')}
-                                        className={statusFilters.preparing ? 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-300 dark:border-amber-800' : ''}
-                                    >
-                                        Preparing
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant={statusFilters.out_for_delivery ? 'secondary' : 'outline'}
-                                        size="sm"
-                                        onClick={() => toggleStatus('out_for_delivery')}
-                                        className={statusFilters.out_for_delivery ? 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950/30 dark:text-blue-300 dark:border-blue-800' : ''}
-                                    >
-                                        Out for Delivery
-                                    </Button>
-                                    <Button
-                                        type="button"
-                                        variant={statusFilters.delivered ? 'secondary' : 'outline'}
-                                        size="sm"
-                                        onClick={() => toggleStatus('delivered')}
-                                        className={statusFilters.delivered ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950/30 dark:text-green-300 dark:border-green-800' : ''}
-                                    >
-                                        Delivered
-                                    </Button>
+                                    <div className="flex items-center gap-2">
+                                        <Select
+                                            value={statusFilter}
+                                            onValueChange={(v) => setStatusFilter(v as 'all' | DeliveryStatus)}
+                                        >
+                                            <SelectTrigger className="w-[200px]">
+                                                <SelectValue placeholder="Filter status" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="all">All Statuses</SelectItem>
+                                                <SelectItem value="preparing">Preparing</SelectItem>
+                                                <SelectItem value="out_for_delivery">Out for Delivery</SelectItem>
+                                                <SelectItem value="delivered">Delivered</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
                                 </div>
-                            </div>
 
-                            <Tabs value={viewMode} onValueChange={(v: any) => setViewMode(v)}>
                                 <TabsContent value="list">
                                     <Table>
                                         <TableHeader>
@@ -408,8 +425,20 @@ export default function DeliveryMonitoring() {
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
-                                            {deliveriesFiltered.map((d) => (
-                                                <TableRow key={d.id}>
+                                            {listPagination.items.map((d) => (
+                                                <TableRow
+                                                    key={d.id}
+                                                    className="cursor-pointer"
+                                                    tabIndex={0}
+                                                    role="button"
+                                                    onClick={() => setSelectedDelivery(d)}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter' || e.key === ' ') {
+                                                            e.preventDefault();
+                                                            setSelectedDelivery(d);
+                                                        }
+                                                    }}
+                                                >
                                                     <TableCell className="font-medium">{d.id}</TableCell>
                                                     <TableCell>{d.order_id}</TableCell>
                                                     <TableCell>{d.branch}</TableCell>
@@ -418,7 +447,7 @@ export default function DeliveryMonitoring() {
                                                     <TableCell className="max-w-[360px] truncate">{d.address}</TableCell>
                                                     <TableCell className="text-right">{d.items}</TableCell>
                                                     <TableCell className="text-right">{peso(d.total)}</TableCell>
-                                                    <TableCell>{d.started_at}</TableCell>
+                                                    <TableCell className="text-muted-foreground">{formatReadableDateTime(d.started_at)}</TableCell>
                                                 </TableRow>
                                             ))}
 
@@ -439,6 +468,31 @@ export default function DeliveryMonitoring() {
                                             )}
                                         </TableBody>
                                     </Table>
+
+                                    <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                        <div className="text-sm text-muted-foreground">
+                                            {`Page ${listPagination.page} of ${listPagination.lastPage} • ${listPagination.total} total`}
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={() => setListPage((p) => Math.max(1, p - 1))}
+                                                disabled={isLoading || listPagination.page <= 1}
+                                            >
+                                                Previous
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={() => setListPage((p) => p + 1)}
+                                                disabled={isLoading || listPagination.page >= listPagination.lastPage}
+                                            >
+                                                Next
+                                            </Button>
+                                        </div>
+                                    </div>
                                 </TabsContent>
 
                                 <TabsContent value="calendar">
@@ -480,7 +534,6 @@ export default function DeliveryMonitoring() {
                                                 api.changeView('timeGridWeek', info.dateStr);
                                             }}
                                             eventContent={(arg) => {
-                                                const d = (arg.event.extendedProps as any)?.delivery as DeliveryRecord | undefined;
                                                 const start = arg.event.start;
                                                 const time = start
                                                     ? start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -502,7 +555,7 @@ export default function DeliveryMonitoring() {
             </div>
 
             <Dialog open={!!selectedDelivery} onOpenChange={(open) => { if (!open) setSelectedDelivery(null); }}>
-                <DialogContent className="sm:max-w-lg">
+                <DialogContent className="sm:max-w-4xl">
                     <DialogHeader>
                         <DialogTitle className="flex items-center justify-between gap-3">
                             <span>Delivery Details</span>
@@ -514,61 +567,91 @@ export default function DeliveryMonitoring() {
                     </DialogHeader>
 
                     {selectedDelivery && (
-                        <div className="space-y-4">
-                            <div className="rounded-lg border p-3">
-                                <div className="flex items-start justify-between gap-3">
-                                    <div className="min-w-0">
-                                        <div className="text-sm text-muted-foreground">Order</div>
-                                        <div className="mt-1 flex items-center gap-2">
-                                            <Hash className="h-4 w-4 text-muted-foreground" />
-                                            <span className="font-semibold">{selectedDelivery.order_id}</span>
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-4">
+                                <div className="rounded-lg border p-3">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <div className="text-sm text-muted-foreground">Order</div>
+                                            <div className="mt-1 flex items-center gap-2">
+                                                <Hash className="h-4 w-4 text-muted-foreground" />
+                                                <span className="font-semibold">{selectedDelivery.order_id}</span>
+                                            </div>
+                                            <div className="mt-2 text-sm text-muted-foreground">Customer</div>
+                                            <div className="mt-1 truncate font-medium">{selectedDelivery.customer}</div>
                                         </div>
-                                        <div className="mt-2 text-sm text-muted-foreground">Customer</div>
-                                        <div className="mt-1 truncate font-medium">{selectedDelivery.customer}</div>
+                                    </div>
+                                </div>
+
+                                <div className="rounded-lg border p-3">
+                                    <div className="flex items-start gap-2">
+                                        <MapPin className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                                        <div className="min-w-0">
+                                            <div className="text-sm font-medium">Delivery Address</div>
+                                            <div className="mt-1 text-sm text-muted-foreground break-words">{selectedDelivery.address}</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="rounded-lg border p-3">
+                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                            <Boxes className="h-4 w-4" />
+                                            Items
+                                        </div>
+                                        <div className="mt-1 text-lg font-semibold">{selectedDelivery.items}</div>
+                                    </div>
+                                    <div className="rounded-lg border p-3">
+                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                            <PhilippinePeso className="h-4 w-4" />
+                                            Total
+                                        </div>
+                                        <div className="mt-1 text-lg font-semibold">{peso(selectedDelivery.total)}</div>
+                                    </div>
+                                    <div className="rounded-lg border p-3">
+                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                            <Clock className="h-4 w-4" />
+                                            Scheduled/Started
+                                        </div>
+                                        <div className="mt-1 text-sm font-medium">
+                                            {formatReadableDateTime(selectedDelivery.started_at)}
+                                        </div>
+                                    </div>
+                                    <div className="rounded-lg border p-3">
+                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                            <Store className="h-4 w-4" />
+                                            Branch
+                                        </div>
+                                        <div className="mt-1 text-sm font-medium">{selectedDelivery.branch}</div>
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="rounded-lg border p-3">
-                                <div className="flex items-start gap-2">
-                                    <MapPin className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                                    <div className="min-w-0">
-                                        <div className="text-sm font-medium">Delivery Address</div>
-                                        <div className="mt-1 text-sm text-muted-foreground break-words">{selectedDelivery.address}</div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-4">
                                 <div className="rounded-lg border p-3">
-                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                        <Boxes className="h-4 w-4" />
-                                        Items
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div className="text-xs text-muted-foreground">Proof of Delivery</div>
+                                        <div className="text-xs text-muted-foreground">
+                                            {selectedDelivery.proof_photo_url ? 'Uploaded' : 'Awaiting upload'}
+                                        </div>
                                     </div>
-                                    <div className="mt-1 text-lg font-semibold">{selectedDelivery.items}</div>
-                                </div>
-                                <div className="rounded-lg border p-3">
-                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                        <PhilippinePeso className="h-4 w-4" />
-                                        Total
+                                    <div className="mt-2 overflow-hidden rounded-md border bg-muted/20">
+                                        {selectedDelivery.proof_photo_url ? (
+                                            <img
+                                                src={selectedDelivery.proof_photo_url}
+                                                alt="Proof of delivery"
+                                                className="w-full max-h-96 cursor-zoom-in object-cover"
+                                                onClick={() => setProofViewerUrl(selectedDelivery.proof_photo_url || '')}
+                                            />
+                                        ) : (
+                                            <div className="flex max-h-96 min-h-32 flex-col items-center justify-center gap-2 p-6 text-center">
+                                                <div className="text-sm font-medium">No proof photo yet</div>
+                                                <div className="text-xs text-muted-foreground">
+                                                    This will appear once the delivery staff uploads the proof of delivery photo.
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
-                                    <div className="mt-1 text-lg font-semibold">{peso(selectedDelivery.total)}</div>
-                                </div>
-                                <div className="rounded-lg border p-3">
-                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                        <Clock className="h-4 w-4" />
-                                        Scheduled/Started
-                                    </div>
-                                    <div className="mt-1 text-sm font-medium">
-                                        {new Date(toIsoDateTime(selectedDelivery.started_at)).toLocaleString()}
-                                    </div>
-                                </div>
-                                <div className="rounded-lg border p-3">
-                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                        <Store className="h-4 w-4" />
-                                        Branch
-                                    </div>
-                                    <div className="mt-1 text-sm font-medium">{selectedDelivery.branch}</div>
                                 </div>
                             </div>
                         </div>
@@ -578,21 +661,26 @@ export default function DeliveryMonitoring() {
                         <Button variant="outline" onClick={() => setSelectedDelivery(null)}>
                             Close
                         </Button>
-                        <Button
-                            variant="outline"
-                            onClick={() => updateSelectedStatus('out_for_delivery')}
-                            disabled={!selectedDelivery || selectedDelivery.status === 'out_for_delivery' || selectedDelivery.status === 'delivered'}
-                        >
-                            Set Out for Delivery
-                        </Button>
-                        <Button
-                            onClick={() => updateSelectedStatus('delivered')}
-                            className="bg-green-600 hover:bg-green-700 text-white"
-                            disabled={!selectedDelivery || selectedDelivery.status === 'delivered'}
-                        >
-                            Mark Delivered
-                        </Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={!!proofViewerUrl} onOpenChange={(open) => { if (!open) setProofViewerUrl(''); }}>
+                <DialogContent className="sm:max-w-5xl">
+                    <DialogHeader>
+                        <DialogTitle>Proof of Delivery</DialogTitle>
+                        <DialogDescription>Click outside to close.</DialogDescription>
+                    </DialogHeader>
+
+                    {proofViewerUrl && (
+                        <div className="overflow-hidden rounded-md border bg-muted/20">
+                            <img
+                                src={proofViewerUrl}
+                                alt="Proof of delivery full size"
+                                className="max-h-[75vh] w-full object-contain"
+                            />
+                        </div>
+                    )}
                 </DialogContent>
             </Dialog>
         </AppLayout>

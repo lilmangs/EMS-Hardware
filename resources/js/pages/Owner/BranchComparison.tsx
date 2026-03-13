@@ -7,7 +7,8 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
-import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Users, Package, BarChart3, PieChart, Table } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Package } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -16,55 +17,98 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ];
 
-// Sample data
-const branchData = {
-    lagonglong: {
-        name: 'Lagonglong Main Branch',
-        totalSales: 284500,
-        totalOrders: 142,
-        totalCustomers: 89,
-        topProduct: 'Hammer',
-        growth: 12.5,
-    },
-    balingasag: {
-        name: 'Balingasag Branch',
-        totalSales: 198200,
-        totalOrders: 98,
-        totalCustomers: 62,
-        topProduct: 'Drill Set',
-        growth: -3.2,
-    },
+type RangeKey = '1month' | '3months' | '6months' | '1year';
+
+type BranchMetrics = {
+    branch_key: 'lagonglong' | 'balingasag';
+    name: string;
+    totalSales: number;
+    totalDeliveries: number;
+    avgDeliveryValue: number;
+    growth: number;
+    topProduct: string;
 };
 
-const monthlySalesData = [
-    { month: 'Jan', lagonglong: 220000, balingasag: 180000 },
-    { month: 'Feb', lagonglong: 235000, balingasag: 175000 },
-    { month: 'Mar', lagonglong: 260000, balingasag: 190000 },
-    { month: 'Apr', lagonglong: 275000, balingasag: 195000 },
-    { month: 'May', lagonglong: 290000, balingasag: 200000 },
-    { month: 'Jun', lagonglong: 284500, balingasag: 198200 },
-];
-
-const categoryComparison = [
-    { category: 'Power Tools', lagonglong: 85000, balingasag: 65000 },
-    { category: 'Hand Tools', lagonglong: 72000, balingasag: 58000 },
-    { category: 'Building Materials', lagonglong: 68000, balingasag: 45000 },
-    { category: 'Electrical', lagonglong: 35000, balingasag: 22000 },
-    { category: 'Plumbing', lagonglong: 24500, balingasag: 8200 },
-];
-
-const topProductsComparison = [
-    { product: 'Hammer', lagonglongSales: 45000, balingasagSales: 32000 },
-    { product: 'Drill Set', lagonglongSales: 38000, balingasagSales: 41000 },
-    { product: 'Saw', lagonglongSales: 32000, balingasagSales: 28000 },
-    { product: 'Screwdriver Set', lagonglongSales: 28000, balingasagSales: 24000 },
-    { product: 'Wrench Set', lagonglongSales: 25000, balingasagSales: 18000 },
-];
+type BranchComparisonResponse = {
+    filters: { range: RangeKey; from: string; to: string; prev_from: string; prev_to: string };
+    summary: { totalSales: number; totalDeliveries: number; totalCustomers: number; avgDeliveryValue: number };
+    branches: Record<'lagonglong' | 'balingasag', BranchMetrics>;
+    monthlySales: Array<{ month: string; lagonglong: number; balingasag: number }>;
+    categoryComparison: Array<{ category: string; lagonglong: number; balingasag: number }>;
+    topProducts: Array<{ product: string; lagonglongSales: number; balingasagSales: number }>;
+};
 
 export default function BranchComparison() {
-    const totalSales = branchData.lagonglong.totalSales + branchData.balingasag.totalSales;
-    const totalOrders = branchData.lagonglong.totalOrders + branchData.balingasag.totalOrders;
-    const totalCustomers = branchData.lagonglong.totalCustomers + branchData.balingasag.totalCustomers;
+    const [range, setRange] = useState<RangeKey>('6months');
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [data, setData] = useState<BranchComparisonResponse | null>(null);
+
+    useEffect(() => {
+        const controller = new AbortController();
+
+        const load = async () => {
+            setIsLoading(true);
+            setError(null);
+            try {
+                const qs = new URLSearchParams({ range });
+                const res = await fetch(`/BranchComparison/data?${qs.toString()}`, {
+                    headers: { Accept: 'application/json' },
+                    signal: controller.signal,
+                });
+
+                if (!res.ok) {
+                    throw new Error(`Request failed (${res.status})`);
+                }
+
+                const json = (await res.json()) as BranchComparisonResponse;
+                setData(json);
+            } catch (e) {
+                if ((e as any)?.name === 'AbortError') return;
+                setError('Failed to load branch comparison data.');
+                setData(null);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        load();
+
+        return () => controller.abort();
+    }, [range]);
+
+    const peso = (n: number) => `₱${(Number(n) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+    const totalSales = data?.summary.totalSales ?? 0;
+    const totalDeliveries = data?.summary.totalDeliveries ?? 0;
+    const totalCustomers = data?.summary.totalCustomers ?? 0;
+    const avgDeliveryValue = data?.summary.avgDeliveryValue ?? 0;
+
+    const lagonglong = data?.branches?.lagonglong;
+    const balingasag = data?.branches?.balingasag;
+
+    const exportReport = async () => {
+        try {
+            const qs = new URLSearchParams({ range });
+            const res = await fetch(`/BranchComparison/data?${qs.toString()}`, {
+                headers: { Accept: 'application/json' },
+            });
+            if (!res.ok) throw new Error('Request failed');
+            const json = await res.json();
+
+            const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `branch-comparison-${range}.json`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        } catch {
+            setError('Export failed.');
+        }
+    };
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -77,7 +121,7 @@ export default function BranchComparison() {
                         <p className="text-muted-foreground">Compare performance between Lagonglong and Balingasag branches</p>
                     </div>
                     <div className="flex items-center gap-2">
-                        <Select defaultValue="6months">
+                        <Select value={range} onValueChange={(v) => setRange(v as RangeKey)}>
                             <SelectTrigger className="w-[180px]">
                                 <SelectValue />
                             </SelectTrigger>
@@ -88,9 +132,15 @@ export default function BranchComparison() {
                                 <SelectItem value="1year">Last Year</SelectItem>
                             </SelectContent>
                         </Select>
-                        <Button>Export Report</Button>
+                        <Button onClick={exportReport} disabled={isLoading}>Export Report</Button>
                     </div>
                 </div>
+
+                {error && (
+                    <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+                        {error}
+                    </div>
+                )}
 
                 {/* Summary Cards */}
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -100,15 +150,15 @@ export default function BranchComparison() {
                             <DollarSign className="h-4 w-4 text-muted-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">₱{totalSales.toLocaleString()}</div>
+                            <div className="text-2xl font-bold">{isLoading ? '…' : peso(totalSales)}</div>
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
                                 <div className="flex items-center gap-1">
                                     <TrendingUp className="h-3 w-3 text-green-600" />
-                                    <span>Lagonglong: +12.5%</span>
+                                    <span>Lagonglong: {isLoading ? '…' : `${(lagonglong?.growth ?? 0) > 0 ? '+' : ''}${(lagonglong?.growth ?? 0).toFixed(2)}%`}</span>
                                 </div>
                                 <div className="flex items-center gap-1">
                                     <TrendingDown className="h-3 w-3 text-red-600" />
-                                    <span>Balingasag: -3.2%</span>
+                                    <span>Balingasag: {isLoading ? '…' : `${(balingasag?.growth ?? 0) > 0 ? '+' : ''}${(balingasag?.growth ?? 0).toFixed(2)}%`}</span>
                                 </div>
                             </div>
                         </CardContent>
@@ -116,45 +166,30 @@ export default function BranchComparison() {
 
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                            <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
+                            <CardTitle className="text-sm font-medium">Total Deliveries</CardTitle>
                             <ShoppingCart className="h-4 w-4 text-muted-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">{totalOrders}</div>
+                            <div className="text-2xl font-bold">{isLoading ? '…' : totalDeliveries}</div>
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                <span>Lagonglong: {branchData.lagonglong.totalOrders}</span>
+                                <span>Lagonglong: {isLoading ? '…' : (lagonglong?.totalDeliveries ?? 0)}</span>
                                 <span>•</span>
-                                <span>Balingasag: {branchData.balingasag.totalOrders}</span>
+                                <span>Balingasag: {isLoading ? '…' : (balingasag?.totalDeliveries ?? 0)}</span>
                             </div>
                         </CardContent>
                     </Card>
 
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                            <CardTitle className="text-sm font-medium">Total Customers</CardTitle>
-                            <Users className="h-4 w-4 text-muted-foreground" />
-                        </CardHeader>
-                        <CardContent>
-                            <div className="text-2xl font-bold">{totalCustomers}</div>
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                <span>Lagonglong: {branchData.lagonglong.totalCustomers}</span>
-                                <span>•</span>
-                                <span>Balingasag: {branchData.balingasag.totalCustomers}</span>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    <Card>
-                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                            <CardTitle className="text-sm font-medium">Avg Order Value</CardTitle>
+                            <CardTitle className="text-sm font-medium">Avg Delivery Value</CardTitle>
                             <Package className="h-4 w-4 text-muted-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">₱{Math.round(totalSales / totalOrders).toLocaleString()}</div>
+                            <div className="text-2xl font-bold">{isLoading ? '…' : peso(avgDeliveryValue)}</div>
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                <span>Lagonglong: ₱{Math.round(branchData.lagonglong.totalSales / branchData.lagonglong.totalOrders).toLocaleString()}</span>
+                                <span>Lagonglong: {isLoading ? '…' : peso(lagonglong?.avgDeliveryValue ?? 0)}</span>
                                 <span>•</span>
-                                <span>Balingasag: ₱{Math.round(branchData.balingasag.totalSales / branchData.balingasag.totalOrders).toLocaleString()}</span>
+                                <span>Balingasag: {isLoading ? '…' : peso(balingasag?.avgDeliveryValue ?? 0)}</span>
                             </div>
                         </CardContent>
                     </Card>
@@ -163,26 +198,31 @@ export default function BranchComparison() {
                 {/* Charts and Tables */}
                 <Tabs defaultValue="sales-trend" className="space-y-4">
                     <TabsList>
-                        <TabsTrigger value="sales-trend">Sales Trend</TabsTrigger>
+                        <TabsTrigger value="sales-trend">Sales Comparison</TabsTrigger>
                         <TabsTrigger value="category-comparison">Category Comparison</TabsTrigger>
                         <TabsTrigger value="top-products">Top Products</TabsTrigger>
-                        <TabsTrigger value="performance-metrics">Performance Metrics</TabsTrigger>
                     </TabsList>
 
                     <TabsContent value="sales-trend" className="space-y-4">
                         <Card>
                             <CardHeader>
-                                <CardTitle>Monthly Sales Comparison</CardTitle>
-                                <CardDescription>Sales performance over the last 6 months</CardDescription>
+                                <CardTitle>Sales Comparison</CardTitle>
+                                <CardDescription>Total sales per branch for the selected range</CardDescription>
                             </CardHeader>
                             <CardContent>
-                                <div className="h-[400px] flex items-center justify-center border-2 border-dashed border-muted rounded-lg">
-                                    <div className="text-center">
-                                        <BarChart3 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                                        <p className="text-muted-foreground">Sales trend chart will be displayed here</p>
-                                        <p className="text-sm text-muted-foreground mt-2">Lagonglong vs Balingasag monthly comparison</p>
-                                    </div>
-                                </div>
+                                {isLoading ? (
+                                    <div className="py-10 text-center text-muted-foreground">Loading…</div>
+                                ) : !lagonglong && !balingasag ? (
+                                    <div className="py-10 text-center text-muted-foreground">No data available for the selected range.</div>
+                                ) : (
+                                    <SalesComparisonBarChart
+                                        lagonglongLabel="Lagonglong"
+                                        balingasagLabel="Balingasag"
+                                        lagonglongSales={lagonglong?.totalSales ?? 0}
+                                        balingasagSales={balingasag?.totalSales ?? 0}
+                                        formatValue={peso}
+                                    />
+                                )}
                             </CardContent>
                         </Card>
                     </TabsContent>
@@ -195,7 +235,12 @@ export default function BranchComparison() {
                             </CardHeader>
                             <CardContent>
                                 <div className="space-y-4">
-                                    {categoryComparison.map((category) => {
+                                    {isLoading ? (
+                                        <div className="py-10 text-center text-muted-foreground">Loading…</div>
+                                    ) : (data?.categoryComparison?.length ?? 0) === 0 ? (
+                                        <div className="py-10 text-center text-muted-foreground">No category data available.</div>
+                                    ) : (
+                                        (data?.categoryComparison ?? []).map((category) => {
                                         const total = category.lagonglong + category.balingasag;
                                         const lagonglongPercent = (category.lagonglong / total) * 100;
                                         const balingasagPercent = (category.balingasag / total) * 100;
@@ -221,7 +266,8 @@ export default function BranchComparison() {
                                                 </div>
                                             </div>
                                         );
-                                    })}
+                                        })
+                                    )}
                                 </div>
                             </CardContent>
                         </Card>
@@ -234,104 +280,110 @@ export default function BranchComparison() {
                                 <CardDescription>Best-selling products across both branches</CardDescription>
                             </CardHeader>
                             <CardContent>
-                                <div className="overflow-x-auto">
-                                    <table className="w-full">
-                                        <thead>
-                                            <tr className="border-b">
-                                                <th className="text-left p-2">Product</th>
-                                                <th className="text-right p-2">Lagonglong Sales</th>
-                                                <th className="text-right p-2">Balingasag Sales</th>
-                                                <th className="text-right p-2">Total Sales</th>
-                                                <th className="text-center p-2">Performance</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {topProductsComparison.map((product) => {
-                                                const total = product.lagonglongSales + product.balingasagSales;
-                                                const isLagonglongBetter = product.lagonglongSales > product.balingasagSales;
+                                {isLoading ? (
+                                    <div className="py-10 text-center text-muted-foreground">Loading…</div>
+                                ) : (data?.topProducts?.length ?? 0) === 0 ? (
+                                    <div className="py-10 text-center text-muted-foreground">No product data available.</div>
+                                ) : (
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full">
+                                            <thead>
+                                                <tr className="border-b">
+                                                    <th className="text-left p-2">Product</th>
+                                                    <th className="text-right p-2">Lagonglong Sales</th>
+                                                    <th className="text-right p-2">Balingasag Sales</th>
+                                                    <th className="text-right p-2">Total Sales</th>
+                                                    <th className="text-center p-2">Performance</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {(data?.topProducts ?? []).map((product) => {
+                                                    const total = product.lagonglongSales + product.balingasagSales;
+                                                    const isLagonglongBetter = product.lagonglongSales > product.balingasagSales;
 
-                                                return (
-                                                    <tr key={product.product} className="border-b">
-                                                        <td className="p-2 font-medium">{product.product}</td>
-                                                        <td className="text-right p-2">₱{product.lagonglongSales.toLocaleString()}</td>
-                                                        <td className="text-right p-2">₱{product.balingasagSales.toLocaleString()}</td>
-                                                        <td className="text-right p-2 font-medium">₱{total.toLocaleString()}</td>
-                                                        <td className="text-center p-2">
-                                                            <Badge variant={isLagonglongBetter ? "default" : "secondary"}>
-                                                                {isLagonglongBetter ? "Lagonglong" : "Balingasag"} Lead
-                                                            </Badge>
-                                                        </td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                                    return (
+                                                        <tr key={product.product} className="border-b">
+                                                            <td className="p-2 font-medium">{product.product}</td>
+                                                            <td className="text-right p-2">{peso(product.lagonglongSales)}</td>
+                                                            <td className="text-right p-2">{peso(product.balingasagSales)}</td>
+                                                            <td className="text-right p-2 font-medium">{peso(total)}</td>
+                                                            <td className="text-center p-2">
+                                                                <Badge variant={isLagonglongBetter ? 'default' : 'secondary'}>
+                                                                    {isLagonglongBetter ? 'Lagonglong' : 'Balingasag'} Lead
+                                                                </Badge>
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                )}
                             </CardContent>
                         </Card>
                     </TabsContent>
 
-                    <TabsContent value="performance-metrics" className="space-y-4">
-                        <div className="grid gap-4 md:grid-cols-2">
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Lagonglong Performance</CardTitle>
-                                    <CardDescription>Key metrics for Lagonglong Main Branch</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="flex items-center justify-between">
-                                        <span>Growth Rate</span>
-                                        <div className="flex items-center gap-2">
-                                            <TrendingUp className="h-4 w-4 text-green-600" />
-                                            <span className="font-medium text-green-600">+12.5%</span>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <span>Top Product</span>
-                                        <Badge variant="outline">{branchData.lagonglong.topProduct}</Badge>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <span>Customer Retention</span>
-                                        <span className="font-medium">78%</span>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <span>Inventory Turnover</span>
-                                        <span className="font-medium">4.2x</span>
-                                    </div>
-                                </CardContent>
-                            </Card>
-
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Balingasag Performance</CardTitle>
-                                    <CardDescription>Key metrics for Balingasag Branch</CardDescription>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="flex items-center justify-between">
-                                        <span>Growth Rate</span>
-                                        <div className="flex items-center gap-2">
-                                            <TrendingDown className="h-4 w-4 text-red-600" />
-                                            <span className="font-medium text-red-600">-3.2%</span>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <span>Top Product</span>
-                                        <Badge variant="outline">{branchData.balingasag.topProduct}</Badge>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <span>Customer Retention</span>
-                                        <span className="font-medium">65%</span>
-                                    </div>
-                                    <div className="flex items-center justify-between">
-                                        <span>Inventory Turnover</span>
-                                        <span className="font-medium">3.1x</span>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </div>
-                    </TabsContent>
                 </Tabs>
             </div>
         </AppLayout>
+    );
+}
+
+function SalesComparisonBarChart({
+    lagonglongLabel,
+    balingasagLabel,
+    lagonglongSales,
+    balingasagSales,
+    formatValue,
+}: {
+    lagonglongLabel: string;
+    balingasagLabel: string;
+    lagonglongSales: number;
+    balingasagSales: number;
+    formatValue: (n: number) => string;
+}) {
+    const max = Math.max(1, Number(lagonglongSales) || 0, Number(balingasagSales) || 0);
+    const lagonglongPct = ((Number(lagonglongSales) || 0) / max) * 100;
+    const balingasagPct = ((Number(balingasagSales) || 0) / max) * 100;
+
+    return (
+        <div className="space-y-5">
+            <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium">{lagonglongLabel}</span>
+                    <span className="text-muted-foreground">{formatValue(Number(lagonglongSales) || 0)}</span>
+                </div>
+                <div className="h-3 w-full rounded-full bg-muted overflow-hidden" role="img" aria-label={`${lagonglongLabel} sales bar`}>
+                    <div className="h-full bg-blue-500" style={{ width: `${lagonglongPct}%` }} />
+                </div>
+            </div>
+
+            <div className="space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium">{balingasagLabel}</span>
+                    <span className="text-muted-foreground">{formatValue(Number(balingasagSales) || 0)}</span>
+                </div>
+                <div className="h-3 w-full rounded-full bg-muted overflow-hidden" role="img" aria-label={`${balingasagLabel} sales bar`}>
+                    <div className="h-full bg-emerald-500" style={{ width: `${balingasagPct}%` }} />
+                </div>
+            </div>
+
+            <div className="grid gap-2 rounded-md border p-3 text-sm sm:grid-cols-2">
+                <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Higher sales</span>
+                    <span className="font-medium">
+                        {(Number(lagonglongSales) || 0) === (Number(balingasagSales) || 0)
+                            ? 'Tie'
+                            : (Number(lagonglongSales) || 0) > (Number(balingasagSales) || 0)
+                                ? lagonglongLabel
+                                : balingasagLabel}
+                    </span>
+                </div>
+                <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Difference</span>
+                    <span className="font-medium tabular-nums">{formatValue(Math.abs((Number(lagonglongSales) || 0) - (Number(balingasagSales) || 0)))}</span>
+                </div>
+            </div>
+        </div>
     );
 }

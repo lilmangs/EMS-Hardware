@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useBranchFilter } from '@/hooks/use-branch-filter';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Eye } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
@@ -35,6 +35,7 @@ type StaffShiftRow = {
     totalSales: number;
     startTime: string;
     endTime: string;
+    role?: string;
 };
 
 function isoDate(d: Date): string {
@@ -67,60 +68,86 @@ function rangeLabel(key: DateFilterKey): string {
     }
 }
 
+function formatReadableDate(iso: string): string {
+    const raw = String(iso || '').trim();
+    if (!raw) return '—';
+    const d = new Date(`${raw}T00:00:00`);
+    if (Number.isNaN(d.getTime())) return raw;
+    return d.toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+    });
+}
+
+function formatReadableTime(hhmm: string): string {
+    const raw = String(hhmm || '').trim();
+    if (!raw || raw === '—') return '—';
+
+    const m = raw.match(/^([01]?\d|2[0-3]):([0-5]\d)$/);
+    if (!m) return raw;
+
+    const hours = Number(m[1]);
+    const minutes = Number(m[2]);
+    const d = new Date(2000, 0, 1, hours, minutes, 0, 0);
+    if (Number.isNaN(d.getTime())) return raw;
+
+    return d.toLocaleTimeString(undefined, {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+    });
+}
+
 export default function StaffMonitoring() {
     const { branch: effectiveBranch } = useBranchFilter();
     const [dateFilter, setDateFilter] = useState<DateFilterKey>('today');
     const [selectedRow, setSelectedRow] = useState<StaffShiftRow | null>(null);
     const [isViewOpen, setIsViewOpen] = useState(false);
 
-    const rows = useMemo(() => {
-        const today = startOfDay(new Date());
-        const yesterday = addDays(today, -1);
-        const todayISO = isoDate(today);
-        const yesterdayISO = isoDate(yesterday);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [rows, setRows] = useState<StaffShiftRow[]>([]);
 
-        const sampleRows: StaffShiftRow[] = [
-            { id: 1, staffName: 'Maria Garcia', branch: 'lagonglong', shiftDateISO: todayISO, onShift: true, totalSales: 12300, startTime: '08:00', endTime: '17:00' },
-            { id: 2, staffName: 'Robert Chen', branch: 'lagonglong', shiftDateISO: todayISO, onShift: true, totalSales: 8450, startTime: '09:00', endTime: '18:00' },
-            { id: 3, staffName: 'Sarah Johnson', branch: 'balingasag', shiftDateISO: todayISO, onShift: false, totalSales: 0, startTime: '—', endTime: '—' },
-            { id: 4, staffName: 'Michael Brown', branch: 'balingasag', shiftDateISO: todayISO, onShift: true, totalSales: 3920, startTime: '10:00', endTime: '19:00' },
-            { id: 5, staffName: 'Maria Garcia', branch: 'lagonglong', shiftDateISO: yesterdayISO, onShift: true, totalSales: 10120, startTime: '08:00', endTime: '17:00' },
-            { id: 6, staffName: 'Robert Chen', branch: 'lagonglong', shiftDateISO: yesterdayISO, onShift: false, totalSales: 0, startTime: '—', endTime: '—' },
-            { id: 7, staffName: 'Sarah Johnson', branch: 'balingasag', shiftDateISO: yesterdayISO, onShift: true, totalSales: 6420, startTime: '09:00', endTime: '18:00' },
-            { id: 8, staffName: 'Michael Brown', branch: 'balingasag', shiftDateISO: yesterdayISO, onShift: true, totalSales: 7150, startTime: '09:00', endTime: '18:00' },
-        ];
+    useEffect(() => {
+        const controller = new AbortController();
 
-        const branchFiltered = effectiveBranch === 'all'
-            ? sampleRows
-            : sampleRows.filter((r) => r.branch === effectiveBranch);
+        const load = async () => {
+            setIsLoading(true);
+            setError(null);
+            try {
+                const qs = new URLSearchParams({
+                    branch_key: effectiveBranch ?? 'all',
+                    range: dateFilter,
+                });
 
-        const now = startOfDay(new Date());
-        const currentDay = isoDate(now);
-        const yesterdayDay = isoDate(addDays(now, -1));
+                const res = await fetch(`/owner/staff-monitoring/data?${qs.toString()}`, {
+                    headers: { Accept: 'application/json' },
+                    signal: controller.signal,
+                });
 
-        const inThisWeek = (iso: string) => {
-            const d = new Date(`${iso}T00:00:00`);
-            const day = d.getDay(); // 0=Sun
-            const mondayBased = day === 0 ? 6 : day - 1;
-            const weekStart = startOfDay(addDays(d, -mondayBased));
-            const weekEnd = startOfDay(addDays(weekStart, 7));
-            const target = startOfDay(d);
-            return target >= weekStart && target < weekEnd;
+                if (!res.ok) {
+                    throw new Error(`Request failed (${res.status})`);
+                }
+
+                const json = (await res.json()) as {
+                    summary?: { staff_total: number; on_duty: number; total_sales: number };
+                    rows?: StaffShiftRow[];
+                };
+
+                setRows(Array.isArray(json.rows) ? json.rows : []);
+            } catch (e) {
+                if ((e as any)?.name === 'AbortError') return;
+                setError('Failed to load staff monitoring data.');
+                setRows([]);
+            } finally {
+                setIsLoading(false);
+            }
         };
 
-        const inLast7Days = (iso: string) => {
-            const d = startOfDay(new Date(`${iso}T00:00:00`));
-            const end = startOfDay(addDays(now, 1));
-            const start = startOfDay(addDays(now, -6));
-            return d >= start && d < end;
-        };
+        load();
 
-        return branchFiltered.filter((r) => {
-            if (dateFilter === 'today') return r.shiftDateISO === currentDay;
-            if (dateFilter === 'yesterday') return r.shiftDateISO === yesterdayDay;
-            if (dateFilter === 'this_week') return inThisWeek(r.shiftDateISO);
-            return inLast7Days(r.shiftDateISO);
-        });
+        return () => controller.abort();
     }, [effectiveBranch, dateFilter]);
 
     const summary = useMemo(() => {
@@ -151,7 +178,7 @@ export default function StaffMonitoring() {
                         <CardTitle className="text-sm font-medium">On duty</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{summary.staffOnDuty}</div>
+                        <div className="text-2xl font-bold">{isLoading ? '…' : summary.staffOnDuty}</div>
                         <p className="text-xs text-muted-foreground">{rangeLabel(dateFilter)}</p>
                     </CardContent>
                 </Card>
@@ -160,7 +187,7 @@ export default function StaffMonitoring() {
                         <CardTitle className="text-sm font-medium">Staff total</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{summary.staffTotal}</div>
+                        <div className="text-2xl font-bold">{isLoading ? '…' : summary.staffTotal}</div>
                         <p className="text-xs text-muted-foreground">{rangeLabel(dateFilter)}</p>
                     </CardContent>
                 </Card>
@@ -169,32 +196,35 @@ export default function StaffMonitoring() {
                         <CardTitle className="text-sm font-medium">Total Sales</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{peso(summary.totalSales)}</div>
+                        <div className="text-2xl font-bold">{isLoading ? '…' : peso(summary.totalSales)}</div>
                         <p className="text-xs text-muted-foreground">{rangeLabel(dateFilter)}</p>
                     </CardContent>
                 </Card>
             </div>
 
-            <div className="flex justify-end">
-                <div className="w-full md:w-56">
-                    <Select value={dateFilter} onValueChange={(v) => setDateFilter(v as DateFilterKey)}>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Date range" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="today">Today</SelectItem>
-                            <SelectItem value="yesterday">Yesterday</SelectItem>
-                            <SelectItem value="this_week">This Week</SelectItem>
-                            <SelectItem value="last_7_days">Last 7 Days</SelectItem>
-                        </SelectContent>
-                    </Select>
+            {error && (
+                <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+                    {error}
                 </div>
-            </div>
+            )}
 
             <Card>
                 <CardHeader>
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <CardTitle>On-duty List</CardTitle>
+                        <div className="w-full md:w-56">
+                            <Select value={dateFilter} onValueChange={(v) => setDateFilter(v as DateFilterKey)}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Date range" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="today">Today</SelectItem>
+                                    <SelectItem value="yesterday">Yesterday</SelectItem>
+                                    <SelectItem value="this_week">This Week</SelectItem>
+                                    <SelectItem value="last_7_days">Last 7 Days</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
                 </CardHeader>
                 <CardContent className="p-0">
@@ -213,7 +243,13 @@ export default function StaffMonitoring() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {rows.length === 0 ? (
+                                {isLoading ? (
+                                    <TableRow>
+                                        <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
+                                            Loading…
+                                        </TableCell>
+                                    </TableRow>
+                                ) : rows.length === 0 ? (
                                     <TableRow>
                                         <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
                                             No staff found for the selected filters.
@@ -228,15 +264,15 @@ export default function StaffMonitoring() {
                                                     {r.branch.charAt(0).toUpperCase() + r.branch.slice(1)}
                                                 </Badge>
                                             </TableCell>
-                                            <TableCell className="whitespace-nowrap">{r.shiftDateISO}</TableCell>
+                                            <TableCell className="whitespace-nowrap text-muted-foreground">{formatReadableDate(r.shiftDateISO)}</TableCell>
                                             <TableCell className="whitespace-nowrap">
                                                 <Badge variant={r.onShift ? 'default' : 'secondary'}>
                                                     {r.onShift ? 'Yes' : 'No'}
                                                 </Badge>
                                             </TableCell>
                                             <TableCell className="whitespace-nowrap text-right tabular-nums pr-8">{peso(r.totalSales)}</TableCell>
-                                            <TableCell className="whitespace-nowrap tabular-nums pl-8">{r.startTime}</TableCell>
-                                            <TableCell className="whitespace-nowrap tabular-nums">{r.endTime}</TableCell>
+                                            <TableCell className="whitespace-nowrap tabular-nums pl-8">{formatReadableTime(r.startTime)}</TableCell>
+                                            <TableCell className="whitespace-nowrap tabular-nums">{formatReadableTime(r.endTime)}</TableCell>
                                             <TableCell className="whitespace-nowrap text-right">
                                                 <Button
                                                     variant="outline"
@@ -267,7 +303,7 @@ export default function StaffMonitoring() {
                     if (!open) setSelectedRow(null);
                 }}
             >
-                <DialogContent className="sm:max-w-xl">
+                <DialogContent className="sm:max-w-3xl">
                     <DialogHeader>
                         <DialogTitle>Shift Details</DialogTitle>
                         <DialogDescription>View staff shift information for the selected date.</DialogDescription>
@@ -276,37 +312,50 @@ export default function StaffMonitoring() {
                     {!selectedRow ? (
                         <div className="text-sm text-muted-foreground">No details available.</div>
                     ) : (
-                        <div className="grid gap-3 text-sm">
-                            <div className="grid grid-cols-2 gap-3">
-                                <div>
-                                    <div className="text-muted-foreground">Staff</div>
-                                    <div className="font-medium">{selectedRow.staffName}</div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                            <div className="space-y-4">
+                                <div className="rounded-lg border p-3">
+                                    <div className="text-xs text-muted-foreground">Staff</div>
+                                    <div className="mt-1 text-base font-semibold">{selectedRow.staffName}</div>
+                                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                                        <Badge variant="outline">
+                                            {selectedRow.branch === 'lagonglong' ? 'Lagonglong' : 'Balingasag'}
+                                        </Badge>
+                                        <Badge variant={selectedRow.onShift ? 'default' : 'secondary'}>
+                                            {selectedRow.onShift ? 'On shift' : 'Off shift'}
+                                        </Badge>
+                                    </div>
+                                    <div className="mt-3 text-sm text-muted-foreground">Date</div>
+                                    <div className="mt-1 text-sm font-medium">{formatReadableDate(selectedRow.shiftDateISO)}</div>
                                 </div>
-                                <div>
-                                    <div className="text-muted-foreground">Branch</div>
-                                    <div className="font-medium">{selectedRow.branch === 'lagonglong' ? 'Lagonglong' : 'Balingasag'}</div>
-                                </div>
-                                <div>
-                                    <div className="text-muted-foreground">Date</div>
-                                    <div className="font-medium">{selectedRow.shiftDateISO}</div>
-                                </div>
-                                <div>
-                                    <div className="text-muted-foreground">On Shift</div>
-                                    <div className="font-medium">{selectedRow.onShift ? 'Yes' : 'No'}</div>
-                                </div>
-                                <div>
-                                    <div className="text-muted-foreground">Start</div>
-                                    <div className="font-medium">{selectedRow.startTime}</div>
-                                </div>
-                                <div>
-                                    <div className="text-muted-foreground">End</div>
-                                    <div className="font-medium">{selectedRow.endTime}</div>
+
+                                <div className="rounded-lg border p-3">
+                                    <div className="text-xs text-muted-foreground">Total Sales</div>
+                                    <div className="mt-1 text-2xl font-bold tabular-nums">{peso(selectedRow.totalSales)}</div>
                                 </div>
                             </div>
 
-                            <div>
-                                <div className="text-muted-foreground">Total Sales</div>
-                                <div className="text-lg font-semibold tabular-nums">{peso(selectedRow.totalSales)}</div>
+                            <div className="space-y-4">
+                                <div className="rounded-lg border p-3">
+                                    <div className="text-sm font-medium">Shift Time</div>
+                                    <div className="mt-2 grid grid-cols-2 gap-3">
+                                        <div>
+                                            <div className="text-xs text-muted-foreground">Start</div>
+                                            <div className="mt-1 font-medium tabular-nums">{formatReadableTime(selectedRow.startTime)}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-xs text-muted-foreground">End</div>
+                                            <div className="mt-1 font-medium tabular-nums">{formatReadableTime(selectedRow.endTime)}</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="rounded-lg border p-3">
+                                    <div className="text-sm font-medium">Branch</div>
+                                    <div className="mt-1 text-sm text-muted-foreground">
+                                        {selectedRow.branch === 'lagonglong' ? 'Lagonglong' : 'Balingasag'}
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     )}

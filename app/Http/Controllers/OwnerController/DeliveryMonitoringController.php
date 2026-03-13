@@ -3,8 +3,11 @@
 namespace App\Http\Controllers\OwnerController;
 
 use App\Http\Controllers\Controller;
+use App\Models\PosDelivery;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 
 class DeliveryMonitoringController extends Controller
@@ -21,74 +24,60 @@ class DeliveryMonitoringController extends Controller
             $branchKey = 'all';
         }
 
-        $today = Carbon::now()->toDateString();
+        $date = $request->query('date');
+        if (!in_array($date, ['all', null, ''], true)) {
+            try {
+                $date = Carbon::parse((string) $date)->toDateString();
+            } catch (\Throwable $e) {
+                $date = 'all';
+            }
+        } else {
+            $date = 'all';
+        }
 
-        $deliveries = [
-            [
-                'id' => 'DLV-1001',
-                'order_id' => 'TRX-1001',
-                'branch_key' => 'lagonglong',
-                'branch' => 'Lagonglong Main Branch',
-                'status' => 'preparing',
-                'customer' => 'Maria Santos',
-                'address' => 'Purok 3, Lagonglong, Misamis Oriental',
-                'items' => 5,
-                'total' => 3590,
-                'started_at' => $today . ' 09:12:00',
-            ],
-            [
-                'id' => 'DLV-1002',
-                'order_id' => 'TRX-1002',
-                'branch_key' => 'balingasag',
-                'branch' => 'Balingasag Branch',
-                'status' => 'out_for_delivery',
-                'customer' => 'Pedro Reyes',
-                'address' => 'Zone 2, Balingasag, Misamis Oriental',
-                'items' => 3,
-                'total' => 2500,
-                'started_at' => $today . ' 10:03:00',
-            ],
-            [
-                'id' => 'DLV-1003',
-                'order_id' => 'TRX-1003',
-                'branch_key' => 'balingasag',
-                'branch' => 'Balingasag Branch',
-                'status' => 'delivered',
-                'customer' => 'Ana Reyes',
-                'address' => 'Brgy. 5, Balingasag, Misamis Oriental',
-                'items' => 7,
-                'total' => 6780,
-                'started_at' => $today . ' 11:45:00',
-            ],
-            [
-                'id' => 'DLV-1004',
-                'order_id' => 'TRX-1004',
-                'branch_key' => 'lagonglong',
-                'branch' => 'Lagonglong Main Branch',
-                'status' => 'delivered',
-                'customer' => 'Chris Lim',
-                'address' => 'National Highway, Lagonglong, Misamis Oriental',
-                'items' => 4,
-                'total' => 8450,
-                'started_at' => $today . ' 14:15:00',
-            ],
-            [
-                'id' => 'DLV-1005',
-                'order_id' => 'TRX-1005',
-                'branch_key' => 'lagonglong',
-                'branch' => 'Lagonglong Main Branch',
-                'status' => 'preparing',
-                'customer' => 'Juan Dela Cruz',
-                'address' => 'Purok 1, Lagonglong, Misamis Oriental',
-                'items' => 2,
-                'total' => 3700,
-                'started_at' => $today . ' 15:30:00',
-            ],
-        ];
+        $query = PosDelivery::query()
+            ->with(['sale:id,ref,branch_key,total,created_at'])
+            ->latest();
+
+        if ($date !== 'all') {
+            $query->whereDate('created_at', $date);
+        }
 
         if ($branchKey && $branchKey !== 'all') {
-            $deliveries = array_values(array_filter($deliveries, fn ($d) => ($d['branch_key'] ?? null) === $branchKey));
+            $query->where('branch_key', $branchKey);
         }
+
+        $deliveries = $query
+            ->limit(500)
+            ->get()
+            ->map(function (PosDelivery $d) {
+                $bk = $d->branch_key;
+                $branchLabel = $bk === 'lagonglong' ? 'Lagonglong Main Branch' : 'Balingasag Branch';
+                $saleId = $d->pos_sale_id;
+                $itemsCount = DB::table('pos_sale_items')
+                    ->where('pos_sale_id', $saleId)
+                    ->selectRaw('COALESCE(SUM(qty),0) as items')
+                    ->value('items');
+
+                $saleTotal = (float) ($d->sale?->total ?? 0);
+                $fee = (float) ($d->delivery_fee ?? 0);
+
+                return [
+                    'id' => (string) ($d->ref ?? $d->id),
+                    'order_id' => (string) ($d->sale?->ref ?? ''),
+                    'branch_key' => $bk,
+                    'branch' => $branchLabel,
+                    'status' => $d->status,
+                    'customer' => $d->customer_name,
+                    'address' => $d->address,
+                    'items' => (int) ($itemsCount ?? 0),
+                    'total' => $saleTotal + $fee,
+                    'started_at' => optional($d->created_at)->toDateTimeString(),
+                    'proof_photo_url' => $d->proof_photo_path ? Storage::disk('public')->url($d->proof_photo_path) : null,
+                ];
+            })
+            ->values()
+            ->all();
 
         $statusCounts = [
             'preparing' => 0,
@@ -116,7 +105,7 @@ class DeliveryMonitoringController extends Controller
         return response()->json([
             'filters' => [
                 'branch_key' => $branchKey ?? 'all',
-                'date' => $today,
+                'date' => $date,
             ],
             'summary' => [
                 'total_today' => count($deliveries),

@@ -9,7 +9,6 @@ import {
 import { UserInfo } from '@/components/user-info';
 import { useMobileNavigation } from '@/hooks/use-mobile-navigation';
 import type { User } from '@/types';
-import { logout } from '@/routes';
 import { edit } from '@/routes/profile';
 
 type Props = {
@@ -49,8 +48,9 @@ export function UserMenuContent({ user }: Props) {
             <DropdownMenuItem variant="destructive" asChild>
                 <Link
                     className="block w-full cursor-pointer"
-                    href={logout()}
+                    href="/logout"
                     as="button"
+                    method="post"
                     onClick={handleLogout}
                     data-test="logout-button"
                 >

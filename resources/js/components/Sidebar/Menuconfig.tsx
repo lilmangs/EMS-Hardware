@@ -16,15 +16,6 @@ import {
     Archive,
 } from 'lucide-react';
 import type { NavItem } from '@/types';
-import {
-    Checkout,
-    Products,
-    Refund,
-    branchcomparison,
-    inventory,
-    salesreports,
-    activitylog,
-} from '@/routes';
 import superadmin from '@/routes/superadmin';
 
 
@@ -38,23 +29,24 @@ export interface MenuItem {
 export const sidebarMenus: Record<string, MenuItem[]> = {
     owner: [
         { label: 'Dashboard', href: '/dashboard', icon: LayoutGrid },
-        { label: 'Products', href: Products().url, icon: ShoppingCart },
-        { label: 'Inventory', href: inventory().url, icon: PackageSearch },
-        { label: 'Sales Reports', href: salesreports().url, icon: ChartColumn },
+        { label: 'Products', href: '/Products', icon: ShoppingCart },
+        { label: 'Inventory', href: '/inventory', icon: PackageSearch },
+        { label: 'Sales Reports', href: '/SalesReports', icon: ChartColumn },
         { label: 'Refunds', href: '/owner/refunds', icon: TicketX },
         { label: 'Delivery Monitoring', href: '/owner/delivery-monitoring', icon: Truck },
         { label: 'Staff Monitoring', href: '/owner/staff-monitoring', icon: Users2Icon },
-        { label: 'Branch Comparison', href: branchcomparison().url, icon: GitCompare },
+        { label: 'Branch Comparison', href: '/BranchComparison', icon: GitCompare },
         { label: 'Archive', href: '/owner/archive', icon: Archive },
-        { label: 'Activity Log', href: activitylog().url, icon: FileText },
+        { label: 'Activity Log', href: '/ActivityLog', icon: FileText },
     ],
 
     cashier: [
         { label: 'Dashboard', href: '/dashboard', icon: LayoutGrid },
-        { label: 'Checkout', href: Checkout().url, icon: ArrowRightLeft },
+        { label: 'Checkout', href: '/Checkout', icon: ArrowRightLeft },
         { label: 'Transaction', href: '/Transaction', icon: FileText },
-        { label: 'Products', href: Products().url, icon: PackageSearch },
-        { label: 'Refund', href: Refund().url, icon: TicketX },
+        { label: 'Products', href: '/Products', icon: PackageSearch },
+        { label: 'Refund', href: '/Refund', icon: TicketX },
+        { label: 'Deliveries', href: '/cashier/deliveries', icon: Truck },
         { label: 'Activity Log', href: '/cashier/activity-log', icon: FileText },
 
     ],
@@ -66,12 +58,17 @@ export const sidebarMenus: Record<string, MenuItem[]> = {
     ],
     staff: [
         { label: 'Dashboard', href: '/dashboard/staff', icon: LayoutGrid },
-        { label: 'Products', href: Products().url, icon: ShoppingCart },
-        { label: 'Inventory', href: inventory().url, icon: PackageSearch },
+        { label: 'Products', href: '/Products', icon: ShoppingCart },
+        { label: 'Inventory', href: '/inventory', icon: PackageSearch },
         { label: 'Archive', href: '/staff/archive', icon: Archive },
         { label: 'Activity Log', href: '/staff/activity-log', icon: FileText },
 
     ],
+
+    delivery: [
+        { label: 'Calendar', href: '/delivery/calendar', icon: Truck },
+    ],
+    
 
 };
 

@@ -371,7 +371,7 @@ export default function Products() {
     const openEditDialog = (product: Product) => {
         setEditProduct(product);
         setEditProductImage(null);
-        setEditProductImagePreviewUrl(null);
+        setEditProductImagePreviewUrl(productImageUrl(product.image_path));
         setIsEditProductOpen(true);
     };
 
@@ -737,6 +737,7 @@ export default function Products() {
                                         onEdit={openEditDialog}
                                         onDelete={onDeleteProduct}
                                         branch={effectiveBranch}
+                                        hideBadges={statusFilter === 'defective'}
                                     />
                                 ))}
                             </div>
@@ -752,6 +753,7 @@ export default function Products() {
                                     onEdit={openEditDialog}
                                     onDelete={onDeleteProduct}
                                     branch={effectiveBranch}
+                                    hideBadges={statusFilter === 'defective'}
                                 />
                             ))}
                         </div>
@@ -761,6 +763,378 @@ export default function Products() {
                         Showing {filteredProducts.length} of {products.length} products
                     </div>
                 </div>
+
+                <Dialog
+                    open={!!detailsProduct}
+                    onOpenChange={(open) => {
+                        if (!open) setDetailsProduct(null);
+                    }}
+                >
+                    <DialogContent className="sm:max-w-2xl">
+                        <DialogHeader>
+                            <DialogTitle>Product Details</DialogTitle>
+                            <DialogDescription>View product information.</DialogDescription>
+                        </DialogHeader>
+
+                        {!detailsProduct ? (
+                            <div className="text-sm text-muted-foreground">No product selected.</div>
+                        ) : (
+                            <div className="grid gap-4 md:grid-cols-[180px_1fr]">
+                                <div className="rounded-lg bg-muted p-3">
+                                    <div className="aspect-square w-full overflow-hidden rounded-md bg-background relative">
+                                        {productImageUrl(detailsProduct.image_path) ? (
+                                            <img
+                                                src={productImageUrl(detailsProduct.image_path) ?? undefined}
+                                                alt={detailsProduct.name}
+                                                className="h-full w-full object-cover"
+                                                loading="lazy"
+                                            />
+                                        ) : (
+                                            <div className="flex h-full w-full items-center justify-center">
+                                                <Package className="h-8 w-8 text-muted-foreground" />
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="min-w-0 space-y-3">
+                                    <div>
+                                        <div className="text-lg font-semibold truncate">{detailsProduct.name}</div>
+                                        <div className="mt-1 text-xs text-muted-foreground font-mono">SKU: {detailsProduct.sku}</div>
+                                    </div>
+
+                                    <div className="grid gap-3 sm:grid-cols-2">
+                                        <div className="rounded-md border p-3">
+                                            <div className="text-xs text-muted-foreground">Price</div>
+                                            <div className="mt-1 font-semibold text-primary">{peso(detailsProduct.price)}</div>
+                                        </div>
+                                        <div className="rounded-md border p-3">
+                                            <div className="text-xs text-muted-foreground">Category</div>
+                                            <div className="mt-1 font-medium">{detailsProduct.category || '—'}</div>
+                                        </div>
+                                        <div className="rounded-md border p-3">
+                                            <div className="text-xs text-muted-foreground">Stock ({stockContextLabel(effectiveBranch)})</div>
+                                            <div className="mt-1 font-medium tabular-nums">{Number(detailsProduct.stock ?? 0).toLocaleString()}</div>
+                                        </div>
+                                        <div className="rounded-md border p-3">
+                                            <div className="text-xs text-muted-foreground">Stock threshold</div>
+                                            <div className="mt-1 font-medium tabular-nums">{Number(detailsProduct.restocking_level ?? 0).toLocaleString()}</div>
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-md border p-3">
+                                        <div className="text-xs text-muted-foreground">Description</div>
+                                        <div className="mt-1 text-sm text-foreground whitespace-pre-wrap break-words">
+                                            {String(detailsProduct.description ?? '').trim() ? String(detailsProduct.description) : '—'}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setDetailsProduct(null)}>
+                                Close
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                <Dialog
+                    open={isEditProductOpen}
+                    onOpenChange={(open) => {
+                        setIsEditProductOpen(open);
+                        if (!open) {
+                            setEditProduct(null);
+                            setEditProductImage(null);
+                            if (editProductImagePreviewUrl) {
+                                URL.revokeObjectURL(editProductImagePreviewUrl);
+                            }
+                            setEditProductImagePreviewUrl(null);
+                        }
+                    }}
+                >
+                    <DialogContent className="sm:max-w-3xl">
+                        <DialogHeader>
+                            <DialogTitle>Edit Product</DialogTitle>
+                            <DialogDescription>Update product information.</DialogDescription>
+                        </DialogHeader>
+
+                        {!editProduct ? (
+                            <div className="text-sm text-muted-foreground">No product selected.</div>
+                        ) : (
+                            <div className="grid gap-4 lg:grid-cols-2">
+                                <div className="rounded-lg bg-muted p-6">
+                                    <div className="flex items-center justify-center">
+                                        {editProductImagePreviewUrl ? (
+                                            <img
+                                                src={editProductImagePreviewUrl}
+                                                alt={editProduct.name || 'Product'}
+                                                className="h-56 w-full max-w-sm rounded-xl object-cover border"
+                                            />
+                                        ) : (
+                                            <div className="h-40 w-full max-w-sm rounded-xl bg-orange-100 flex items-center justify-center dark:bg-orange-950">
+                                                <Package className="h-10 w-10 text-orange-600" />
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    <div className="mt-4 space-y-1">
+                                        <label className="text-xs font-medium text-muted-foreground">Product image</label>
+                                        <Input
+                                            type="file"
+                                            accept="image/*"
+                                            onChange={(e) => {
+                                                const file = e.target.files?.[0] ?? null;
+
+                                                if (editProductImagePreviewUrl) {
+                                                    URL.revokeObjectURL(editProductImagePreviewUrl);
+                                                }
+
+                                                setEditProductImage(file);
+                                                setEditProductImagePreviewUrl(file ? URL.createObjectURL(file) : productImageUrl(editProduct.image_path));
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+
+                                <div className="grid gap-3">
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-muted-foreground">Status</label>
+                                        <Select
+                                            value={String(editProduct.status ?? 'active')}
+                                            onValueChange={(value) =>
+                                                setEditProduct((p) =>
+                                                    p
+                                                        ? {
+                                                            ...p,
+                                                            status: value as Product['status'],
+                                                        }
+                                                        : p
+                                                )
+                                            }
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select status" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="active">Active</SelectItem>
+                                                <SelectItem value="out_of_stock">Out of stock</SelectItem>
+                                                <SelectItem value="reserved">Reserved</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-muted-foreground">Category</label>
+                                        <Select
+                                            value={editProduct.category ?? ''}
+                                            onValueChange={(value: any) =>
+                                                setEditProduct((p) => (p ? { ...p, category: value } : p))
+                                            }
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select category" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {categories.filter((c) => c !== 'All').map((c) => (
+                                                    <SelectItem key={c} value={c}>
+                                                        {c}
+                                                    </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-medium text-muted-foreground">
+                                                SKU <span className="text-destructive">*</span>
+                                            </label>
+                                            <Input
+                                                value={editProduct.sku}
+                                                onChange={(e) =>
+                                                    setEditProduct((p) => (p ? { ...p, sku: e.target.value } : p))
+                                                }
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-medium text-muted-foreground">
+                                                Product name <span className="text-destructive">*</span>
+                                            </label>
+                                            <Input
+                                                value={editProduct.name}
+                                                onChange={(e) =>
+                                                    setEditProduct((p) => (p ? { ...p, name: e.target.value } : p))
+                                                }
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-medium text-muted-foreground">Unit price (₱)</label>
+                                            <Input
+                                                type="number"
+                                                value={Number(editProduct.price) || 0}
+                                                onChange={(e) =>
+                                                    setEditProduct((p) =>
+                                                        p ? { ...p, price: Number(e.target.value) || 0 } : p
+                                                    )
+                                                }
+                                            />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-medium text-muted-foreground">Restocking Level</label>
+                                            <Input
+                                                type="number"
+                                                value={Number(editProduct.restocking_level) || 0}
+                                                onChange={(e) =>
+                                                    setEditProduct((p) =>
+                                                        p
+                                                            ? {
+                                                                ...p,
+                                                                restocking_level: Number(e.target.value) || 0,
+                                                            }
+                                                            : p
+                                                    )
+                                                }
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-medium text-muted-foreground">Description</label>
+                                        <textarea
+                                            value={String(editProduct.description ?? '')}
+                                            onChange={(e) =>
+                                                setEditProduct((p) => (p ? { ...p, description: e.target.value } : p))
+                                            }
+                                            placeholder="Optional product details"
+                                            className="min-h-[84px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        <DialogFooter>
+                            <Button
+                                variant="outline"
+                                onClick={() => {
+                                    setIsEditProductOpen(false);
+                                    setEditProduct(null);
+                                    setEditProductImage(null);
+                                    if (editProductImagePreviewUrl) {
+                                        URL.revokeObjectURL(editProductImagePreviewUrl);
+                                    }
+                                    setEditProductImagePreviewUrl(null);
+                                }}
+                            >
+                                Cancel
+                            </Button>
+                            <Button onClick={onUpdateProduct} disabled={!editProduct}>
+                                Save Changes
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                <Dialog
+                    open={!!barcodeProduct}
+                    onOpenChange={(open) => {
+                        if (!open) {
+                            closeBarcodeDialog();
+                            if (barcodeContainerRef.current) {
+                                barcodeContainerRef.current.innerHTML = '';
+                            }
+                        }
+                    }}
+                >
+                    <DialogContent className="sm:max-w-3xl">
+                        <DialogHeader>
+                            <DialogTitle>Generate Barcodes</DialogTitle>
+                            <DialogDescription>Generate printable barcodes for the selected product.</DialogDescription>
+                        </DialogHeader>
+
+                        {!barcodeProduct ? (
+                            <div className="text-sm text-muted-foreground">No product selected.</div>
+                        ) : (
+                            <div className="space-y-4">
+                                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                                    <div className="min-w-0">
+                                        <div className="font-semibold truncate">{barcodeProduct.name}</div>
+                                        <div className="text-xs text-muted-foreground font-mono truncate">SKU: {barcodeProduct.sku}</div>
+                                    </div>
+
+                                    <div className="flex items-end gap-2">
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-medium text-muted-foreground">Quantity</label>
+                                            <Input
+                                                type="number"
+                                                min={1}
+                                                value={barcodeQty}
+                                                onChange={(e) => {
+                                                    const n = Number(e.target.value) || 1;
+                                                    setBarcodeQty(Math.max(1, n));
+                                                    setBarcodesGenerated(false);
+                                                    if (barcodeContainerRef.current) {
+                                                        barcodeContainerRef.current.innerHTML = '';
+                                                    }
+                                                }}
+                                                className="w-[120px]"
+                                            />
+                                        </div>
+
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            onClick={generateBarcodes}
+                                            disabled={!barcodeProduct}
+                                        >
+                                            Generate
+                                        </Button>
+                                    </div>
+                                </div>
+
+                                <div className="rounded-lg border bg-muted/30 p-3">
+                                    <div className="max-h-[55vh] overflow-auto">
+                                        <div
+                                            ref={barcodeContainerRef}
+                                            className="flex flex-wrap gap-3 justify-center"
+                                        />
+                                    </div>
+
+                                    {!barcodesGenerated && (
+                                        <div className="mt-3 text-center text-xs text-muted-foreground">
+                                            Click “Generate” to preview barcodes.
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+
+                        <DialogFooter>
+                            <Button
+                                variant="outline"
+                                onClick={() => {
+                                    closeBarcodeDialog();
+                                    if (barcodeContainerRef.current) {
+                                        barcodeContainerRef.current.innerHTML = '';
+                                    }
+                                }}
+                            >
+                                Close
+                            </Button>
+                            <Button
+                                onClick={printBarcodes}
+                                disabled={!barcodeProduct || !barcodesGenerated}
+                            >
+                                Print
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
 
                 {canAddProduct && (
                     <Dialog
@@ -955,6 +1329,7 @@ function ProductCardGrid({
     onEdit,
     onDelete,
     branch,
+    hideBadges,
 }: {
     product: Product;
     onGenerateBarcode: (p: Product) => void;
@@ -962,6 +1337,7 @@ function ProductCardGrid({
     onEdit: (p: Product) => void;
     onDelete: (p: Product) => void;
     branch: 'all' | 'lagonglong' | 'balingasag';
+    hideBadges: boolean;
 }) {
     const status = getStockStatus(product.stock);
     const restockingLevel = Number(product.restocking_level) || 0;
@@ -1003,7 +1379,7 @@ function ProductCardGrid({
             </div>
 
             {/* Stock indicator */}
-            {status !== 'ok' && (
+            {!hideBadges && status !== 'ok' && (
                 <div className="absolute top-1.5 left-1.5 z-10">
                     {status === 'out' && <Badge variant="destructive" className="text-[9px] px-1.5 py-0">Out</Badge>}
                     {status === 'critical' && <Badge variant="destructive" className="text-[9px] px-1.5 py-0">Low</Badge>}
@@ -1035,16 +1411,18 @@ function ProductCardGrid({
                 <div className="text-[10px] text-muted-foreground font-mono mt-0.5">{product.sku}</div>
                 <div className="mt-1.5">
                     <div className="text-xs font-semibold text-primary">{peso(product.price)}</div>
-                    <div className="mt-1 flex flex-col items-start gap-1">
-                        {showLowStock && lowStockBadge(product.stock, restockingLevel)}
-                        {product.stock === 0 && defectiveQty > 0 ? (
-                            <Badge variant="destructive" className="text-[10px]">
-                                {`Out (All Defective) (${stockContextLabel(branch)})`}
-                            </Badge>
-                        ) : (
-                            stockBadge(product.stock, stockContextLabel(branch))
-                        )}
-                    </div>
+                    {!hideBadges && (
+                        <div className="mt-1 flex flex-col items-start gap-1">
+                            {showLowStock && lowStockBadge(product.stock, restockingLevel)}
+                            {product.stock === 0 && defectiveQty > 0 ? (
+                                <Badge variant="destructive" className="text-[10px]">
+                                    {`Out (All Defective) (${stockContextLabel(branch)})`}
+                                </Badge>
+                            ) : (
+                                stockBadge(product.stock, stockContextLabel(branch))
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
@@ -1059,6 +1437,7 @@ function ProductCardList({
     onEdit,
     onDelete,
     branch,
+    hideBadges,
 }: {
     product: Product;
     onGenerateBarcode: (p: Product) => void;
@@ -1066,6 +1445,7 @@ function ProductCardList({
     onEdit: (p: Product) => void;
     onDelete: (p: Product) => void;
     branch: 'all' | 'lagonglong' | 'balingasag';
+    hideBadges: boolean;
 }) {
     const status = getStockStatus(product.stock);
     const restockingLevel = Number(product.restocking_level) || 0;
@@ -1105,16 +1485,18 @@ function ProductCardList({
             {/* Price + Alerts */}
             <div className="text-right shrink-0">
                 <div className="text-sm font-semibold text-primary">{peso(product.price)}</div>
-                <div className="mt-1 flex flex-col items-end gap-1">
-                    {showLowStock && lowStockBadge(product.stock, restockingLevel)}
-                    {product.stock === 0 && defectiveQty > 0 ? (
-                        <Badge variant="destructive" className="text-[10px]">
-                            {`Out (All Defective) (${stockContextLabel(branch)})`}
-                        </Badge>
-                    ) : (
-                        stockBadge(product.stock, stockContextLabel(branch))
-                    )}
-                </div>
+                {!hideBadges && (
+                    <div className="mt-1 flex flex-col items-end gap-1">
+                        {showLowStock && lowStockBadge(product.stock, restockingLevel)}
+                        {product.stock === 0 && defectiveQty > 0 ? (
+                            <Badge variant="destructive" className="text-[10px]">
+                                {`Out (All Defective) (${stockContextLabel(branch)})`}
+                            </Badge>
+                        ) : (
+                            stockBadge(product.stock, stockContextLabel(branch))
+                        )}
+                    </div>
+                )}
             </div>
 
             {/* Actions */}

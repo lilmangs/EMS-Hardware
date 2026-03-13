@@ -6,11 +6,13 @@ use App\Http\Controllers\OwnerController\InventoryController;
 use App\Http\Controllers\CashierController\RefundController;
 use App\Http\Controllers\CashierController\CheckoutController;
 use App\Http\Controllers\CashierController\ActivityLogController as CashierActivityLogController;
+use App\Http\Controllers\CashierController\DeliveryController as CashierDeliveryController;
 use App\Http\Controllers\OwnerController\SalesreportsController;
 use App\Http\Controllers\OwnerController\BranchComparisonController;
 use App\Http\Controllers\OwnerController\ActivityLogController;
 use App\Http\Controllers\OwnerController\DeliveryMonitoringController;
 use App\Http\Controllers\OwnerController\StaffMonitoringController;
+use App\Http\Controllers\OwnerController\DashboardDataController;
 use App\Http\Controllers\OwnerController\ArchiveController;
 use App\Http\Controllers\OwnerController\RefundsController;
 use App\Http\Controllers\Admin\SuperadminController;
@@ -18,6 +20,7 @@ use App\Http\Controllers\Admin\AdminActivityLogController;
 use App\Http\Controllers\Staff\DashboardController as StaffDashboardController;
 use App\Http\Controllers\Staff\ArchiveController as StaffArchiveController;
 use App\Http\Controllers\Staff\ActivityLogController as StaffActivityLogController;
+use App\Http\Controllers\Delivery\CalendarController as DeliveryCalendarController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
@@ -87,6 +90,10 @@ Route::get('/BranchComparison', [BranchComparisonController::class, 'index'])
     ->middleware(['auth', 'verified', 'role:owner'])
     ->name('branchcomparison');
 
+Route::get('/BranchComparison/data', [BranchComparisonController::class, 'data'])
+    ->middleware(['auth', 'verified', 'role:owner'])
+    ->name('branchcomparison.data');
+
     Route::get('/ActivityLog', [ActivityLogController::class, 'index'])
     ->middleware(['auth', 'verified', 'role:owner'])
     ->name('activitylog');
@@ -99,9 +106,17 @@ Route::get('/owner/delivery-monitoring/data', [DeliveryMonitoringController::cla
     ->middleware(['auth', 'verified', 'role:owner'])
     ->name('owner.delivery-monitoring.data');
 
+Route::get('/owner/dashboard/data', DashboardDataController::class)
+    ->middleware(['auth', 'verified', 'role:owner'])
+    ->name('owner.dashboard.data');
+
 Route::get('/owner/staff-monitoring', [StaffMonitoringController::class, 'index'])
     ->middleware(['auth', 'verified', 'role:owner'])
     ->name('owner.staff-monitoring');
+
+Route::get('/owner/staff-monitoring/data', [StaffMonitoringController::class, 'data'])
+    ->middleware(['auth', 'verified', 'role:owner'])
+    ->name('owner.staff-monitoring.data');
 
 Route::get('/owner/archive', [ArchiveController::class, 'index'])
     ->middleware(['auth', 'verified', 'role:owner'])
@@ -182,6 +197,30 @@ Route::get('/Owner/Archive', function () {
     ->middleware(['auth', 'verified', 'role:cashier'])
     ->name('cashier.activity-log');
 
+    Route::get('/cashier/deliveries', [CashierDeliveryController::class, 'index'])
+    ->middleware(['auth', 'verified', 'role:cashier'])
+    ->name('cashier.deliveries');
+
+    Route::get('/cashier/deliveries/data', [CashierDeliveryController::class, 'data'])
+    ->middleware(['auth', 'verified', 'role:cashier'])
+    ->name('cashier.deliveries.data');
+
+    Route::get('/cashier/deliveries/staff', [CashierDeliveryController::class, 'staff'])
+    ->middleware(['auth', 'verified', 'role:cashier'])
+    ->name('cashier.deliveries.staff');
+
+    Route::post('/cashier/deliveries/create', [CashierDeliveryController::class, 'create'])
+    ->middleware(['auth', 'verified', 'role:cashier'])
+    ->name('cashier.deliveries.create');
+
+    Route::post('/cashier/deliveries/assign', [CashierDeliveryController::class, 'assign'])
+    ->middleware(['auth', 'verified', 'role:cashier'])
+    ->name('cashier.deliveries.assign');
+
+    Route::post('/cashier/deliveries/status', [CashierDeliveryController::class, 'status'])
+    ->middleware(['auth', 'verified', 'role:cashier'])
+    ->name('cashier.deliveries.status');
+
 Route::get('/dashboard/staff', StaffDashboardController::class)
     ->middleware(['auth', 'verified', 'role:staff'])
     ->name('staff.dashboard');
@@ -202,6 +241,26 @@ Route::get('/staff/activity-log', [StaffActivityLogController::class, 'index'])
     ->middleware(['auth', 'verified', 'role:staff'])
     ->name('staff.activity-log');
 
+Route::get('/delivery/calendar', [DeliveryCalendarController::class, 'index'])
+    ->middleware(['auth', 'verified', 'role:delivery'])
+    ->name('delivery.calendar');
+
+Route::get('/delivery/calendar/data', [DeliveryCalendarController::class, 'data'])
+    ->middleware(['auth', 'verified', 'role:delivery'])
+    ->name('delivery.calendar.data');
+
+Route::post('/delivery/calendar/schedule', [DeliveryCalendarController::class, 'schedule'])
+    ->middleware(['auth', 'verified', 'role:delivery'])
+    ->name('delivery.calendar.schedule');
+
+Route::post('/delivery/calendar/queue', [DeliveryCalendarController::class, 'queue'])
+    ->middleware(['auth', 'verified', 'role:delivery'])
+    ->name('delivery.calendar.queue');
+
+Route::post('/delivery/calendar/status', [DeliveryCalendarController::class, 'status'])
+    ->middleware(['auth', 'verified', 'role:delivery'])
+    ->name('delivery.calendar.status');
+
 // Keep the general dashboard for backward compatibility
 Route::get('dashboard', function () {
     $user = request()->user();
@@ -210,7 +269,7 @@ Route::get('dashboard', function () {
         'owner' => Inertia::render('Owner/Dashboard'),
         'staff' => redirect()->route('staff.dashboard'),
         'cashier' => Inertia::render('Cashier/Dashboard'),
-        'delivery' => Inertia::render('Delivery/Dashboard'),
+        'delivery' => redirect()->route('delivery.calendar'),
         'superadmin' => Inertia::render('Admin/Superadmin'),
             default => redirect('/'),
     };

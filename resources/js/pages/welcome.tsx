@@ -1,5 +1,4 @@
 import { Head, Link, usePage } from '@inertiajs/react';
-import { dashboard, login } from '@/routes';
 import { useEffect } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -82,11 +81,11 @@ export default function Welcome() {
                             <div className="flex flex-1 items-center justify-end gap-3">
                                 {auth.user ? (
                                     <Button asChild size="sm">
-                                        <Link href={dashboard()}>Dashboard</Link>
+                                        <Link href="/dashboard">Dashboard</Link>
                                     </Button>
                                 ) : (
                                     <Button asChild variant="outline" size="sm">
-                                        <Link href={login()}>Log in</Link>
+                                        <Link href="/login">Log in</Link>
                                     </Button>
                                 )}
                             </div>
@@ -111,20 +110,20 @@ export default function Welcome() {
                     <div className="relative max-w-7xl mx-auto px-6 py-20 sm:py-24">
                         <div className="grid items-center gap-10 lg:grid-cols-2">
                             <div className="text-center lg:text-left">
-                                <Badge className="mb-6 lp-gradient-orange-brown text-white">POS • Inventory • Delivery</Badge>
+                                <Badge className="mb-6 lp-gradient-orange-brown text-white">POS • Barcode • Dual-Branch • Delivery </Badge>
                                 <h1 className="text-5xl md:text-6xl font-semibold tracking-tight">
-                                    <span className="lp-gradient-text-orange-brown">Sell faster. Track inventory.</span>
-                                    <span className="block text-foreground">Deliver with confidence.</span>
+                                    <span className="lp-gradient-text-orange-brown">EM's Hardware.</span>
+                                    <span className="block text-foreground"></span>
                                 </h1>
                                 <p className="mt-6 text-lg md:text-xl text-foreground max-w-2xl mx-auto lg:mx-0">
-                                    EM's Hardware Point-of-Sale & Inventory Management System built for multi-branch operations.
+                                    A Centralized Barcode-Integrated POS and Dual-Dranch Monitoring System for EM's Hardware with Improved Delivery Scheduling. 
                                 </p>
 
                                 <div className="mt-8 flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
                                     {auth.user ? (
                                         <>
                                             <Button asChild size="lg" className="lp-gradient-orange-brown text-white hover:opacity-90">
-                                                <Link href={dashboard()}>Open Dashboard</Link>
+                                                <Link href="/dashboard">Open Dashboard</Link>
                                             </Button>
                                             <Button asChild size="lg" variant="outline">
                                                 <Link href="#services">See Services</Link>
@@ -133,7 +132,7 @@ export default function Welcome() {
                                     ) : (
                                         <>
                                             <Button asChild size="lg">
-                                                <Link href={login()}>Log in</Link>
+                                                <Link href="/login">Log in</Link>
                                             </Button>
                                             <Button asChild size="lg" variant="outline">
                                                 <Link href="#services">Explore Features</Link>
@@ -436,7 +435,7 @@ export default function Welcome() {
                                     <li><Link href="/" className="flex items-start gap-2 text-muted-foreground hover:text-foreground"><Home className="mt-0.5 h-4 w-4" />Home</Link></li>
                                     <li><Link href="#about" className="flex items-start gap-2 text-muted-foreground hover:text-foreground"><Info className="mt-0.5 h-4 w-4" />About</Link></li>
                                     <li><Link href="#services" className="flex items-start gap-2 text-muted-foreground hover:text-foreground"><Wrench className="mt-0.5 h-4 w-4" />Services</Link></li>
-                                    <li><Link href={dashboard()} className="flex items-start gap-2 text-muted-foreground hover:text-foreground"><BarChart3 className="mt-0.5 h-4 w-4" />Dashboard</Link></li>
+                                    <li><Link href="/dashboard" className="flex items-start gap-2 text-muted-foreground hover:text-foreground"><BarChart3 className="mt-0.5 h-4 w-4" />Dashboard</Link></li>
                                 </ul>
                             </div>
 
