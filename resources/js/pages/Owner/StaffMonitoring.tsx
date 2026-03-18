@@ -7,8 +7,14 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useBranchFilter } from '@/hooks/use-branch-filter';
 import { useEffect, useMemo, useState } from 'react';
-import { Eye } from 'lucide-react';
+import { Eye, MoreHorizontal } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
     Dialog,
     DialogContent,
@@ -221,7 +227,7 @@ export default function StaffMonitoring() {
                                     <SelectTrigger>
                                         <SelectValue placeholder="Role" />
                                     </SelectTrigger>
-                                    <SelectContent>
+                                    <SelectContent> 
                                         <SelectItem value="cashier">Cashier</SelectItem>
                                         <SelectItem value="staff">Staff</SelectItem>
                                         <SelectItem value="delivery">Delivery Staff</SelectItem>
@@ -275,7 +281,23 @@ export default function StaffMonitoring() {
                                     </TableRow>
                                 ) : (
                                     rows.map((r) => (
-                                        <TableRow key={r.id} className="hover:bg-muted/40">
+                                        <TableRow
+                                            key={r.id}
+                                            className="hover:bg-muted/40 cursor-pointer"
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={() => {
+                                                setSelectedRow(r);
+                                                setIsViewOpen(true);
+                                            }}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' || e.key === ' ') {
+                                                    e.preventDefault();
+                                                    setSelectedRow(r);
+                                                    setIsViewOpen(true);
+                                                }
+                                            }}
+                                        >
                                             <TableCell className="font-medium whitespace-nowrap">{r.staffName}</TableCell>
                                             <TableCell className="whitespace-nowrap">
                                                 <Badge variant="outline">
@@ -292,18 +314,29 @@ export default function StaffMonitoring() {
                                             <TableCell className="whitespace-nowrap tabular-nums pl-8">{formatReadableTime(r.startTime)}</TableCell>
                                             <TableCell className="whitespace-nowrap tabular-nums">{formatReadableTime(r.endTime)}</TableCell>
                                             <TableCell className="whitespace-nowrap text-right">
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="h-8"
-                                                    onClick={() => {
-                                                        setSelectedRow(r);
-                                                        setIsViewOpen(true);
-                                                    }}
-                                                >
-                                                    <Eye className="mr-2 h-4 w-4" />
-                                                    View
-                                                </Button>
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <button
+                                                            type="button"
+                                                            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            <MoreHorizontal className="h-4 w-4" />
+                                                        </button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end" className="w-44">
+                                                        <DropdownMenuItem
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setSelectedRow(r);
+                                                                setIsViewOpen(true);
+                                                            }}
+                                                        >
+                                                            <Eye className="mr-2 h-4 w-4" />
+                                                            View
+                                                        </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
                                             </TableCell>
                                         </TableRow>
                                     ))

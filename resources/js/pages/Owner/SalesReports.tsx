@@ -1,5 +1,5 @@
 import { Head, usePage } from '@inertiajs/react';
-import { DollarSign, Package, ReceiptText, Target } from 'lucide-react';
+import { DollarSign, MoreHorizontal, Package, ReceiptText, Target } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
@@ -7,6 +7,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { useBranchFilter } from '@/hooks/use-branch-filter';
 import {
     Area,
@@ -63,6 +70,22 @@ export default function SalesReports() {
     const [data, setData] = useState<SalesReportResponse | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
+
+    type SaleDetails = {
+        id: number;
+        ref: string;
+        branch_key: 'lagonglong' | 'balingasag';
+        created_at: string | null;
+        subtotal: number;
+        delivery_fee: number;
+        total: number;
+        items: Array<{ name: string; price: number; qty: number; line_total: number }>;
+    };
+
+    const [detailsSale, setDetailsSale] = useState<SaleDetails | null>(null);
+    const [isDetailsOpen, setIsDetailsOpen] = useState(false);
+    const [isDetailsLoading, setIsDetailsLoading] = useState(false);
+    const [detailsError, setDetailsError] = useState('');
 
     const activeFetchRef = useRef<AbortController | null>(null);
     const fetchSeqRef = useRef(0);
@@ -166,6 +189,31 @@ export default function SalesReports() {
 
     const branchLabel = useCallback((k: 'lagonglong' | 'balingasag') => {
         return k === 'lagonglong' ? 'Lagonglong' : 'Balingasag';
+    }, []);
+
+    const openTransactionDetails = useCallback(async (id: number) => {
+        if (!id) return;
+
+        setIsDetailsOpen(true);
+        setIsDetailsLoading(true);
+        setDetailsError('');
+
+        try {
+            const res = await fetch(`/owner/sales-reports/transactions/${id}`, {
+                headers: { Accept: 'application/json' },
+                credentials: 'same-origin',
+                cache: 'no-store',
+            });
+            const json = (await res.json().catch(() => null)) as { sale?: SaleDetails; message?: string } | null;
+            if (!res.ok) throw new Error(json?.message || 'Failed to load transaction details');
+            if (!json?.sale) throw new Error('Missing transaction details');
+            setDetailsSale(json.sale);
+        } catch (e: any) {
+            setDetailsSale(null);
+            setDetailsError(e?.message ? String(e.message) : 'Failed to load transaction details');
+        } finally {
+            setIsDetailsLoading(false);
+        }
     }, []);
 
     const printReport = useCallback(async () => {
@@ -438,11 +486,24 @@ export default function SalesReports() {
                                         <TableHead className="text-right">Delivery Fee</TableHead>
                                         <TableHead className="text-right">Total</TableHead>
                                         <TableHead className="pl-10 min-w-[180px]">Date</TableHead>
+                                        <TableHead className="text-right w-12">Action</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {transactions.map((t) => (
-                                        <TableRow key={t.id}>
+                                        <TableRow
+                                            key={t.id}
+                                            className="cursor-pointer hover:bg-muted/50"
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={() => openTransactionDetails(t.id)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' || e.key === ' ') {
+                                                    e.preventDefault();
+                                                    openTransactionDetails(t.id);
+                                                }
+                                            }}
+                                        >
                                             <TableCell className="font-medium">{t.ref}</TableCell>
                                             <TableCell>{branchLabel(t.branch_key)}</TableCell>
                                             <TableCell className="text-right tabular-nums">{t.items}</TableCell>
@@ -452,12 +513,35 @@ export default function SalesReports() {
                                             </TableCell>
                                             <TableCell className="text-right font-medium tabular-nums">{peso(t.total || 0)}</TableCell>
                                             <TableCell className="pl-10 min-w-[180px] text-muted-foreground">{formatDateTime(t.created_at)}</TableCell>
+                                            <TableCell className="text-right">
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <button
+                                                            type="button"
+                                                            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                                                            onClick={(e) => e.stopPropagation()}
+                                                        >
+                                                            <MoreHorizontal className="h-4 w-4" />
+                                                        </button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end" className="w-44">
+                                                        <DropdownMenuItem
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                openTransactionDetails(t.id);
+                                                            }}
+                                                        >
+                                                            View Details
+                                                        </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
+                                            </TableCell>
                                         </TableRow>
                                     ))}
 
                                     {!isLoading && !transactions.length && (
                                         <TableRow>
-                                            <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                                            <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
                                                 No transactions found.
                                             </TableCell>
                                         </TableRow>
@@ -465,7 +549,7 @@ export default function SalesReports() {
 
                                     {isLoading && (
                                         <TableRow>
-                                            <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                                            <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
                                                 Loading…
                                             </TableCell>
                                         </TableRow>
@@ -507,6 +591,105 @@ export default function SalesReports() {
                     </CardContent>
                 </Card>
             </div>
+
+            <Dialog
+                open={isDetailsOpen}
+                onOpenChange={(open) => {
+                    setIsDetailsOpen(open);
+                    if (!open) {
+                        setDetailsSale(null);
+                        setDetailsError('');
+                        setIsDetailsLoading(false);
+                    }
+                }}
+            >
+                <DialogContent className="sm:max-w-3xl">
+                    <DialogHeader>
+                        <DialogTitle>Transaction Details</DialogTitle>
+                        <DialogDescription>View the full breakdown of this sale.</DialogDescription>
+                    </DialogHeader>
+
+                    {isDetailsLoading ? (
+                        <div className="text-sm text-muted-foreground">Loading…</div>
+                    ) : detailsError ? (
+                        <div className="text-sm text-destructive">{detailsError}</div>
+                    ) : !detailsSale ? (
+                        <div className="text-sm text-muted-foreground">No transaction selected.</div>
+                    ) : (
+                        <div className="space-y-4">
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                <div className="rounded-lg border p-3">
+                                    <div className="text-xs text-muted-foreground">Reference</div>
+                                    <div className="mt-1 font-semibold">{detailsSale.ref}</div>
+                                </div>
+                                <div className="rounded-lg border p-3">
+                                    <div className="text-xs text-muted-foreground">Date</div>
+                                    <div className="mt-1 font-medium">{formatDateTime(detailsSale.created_at)}</div>
+                                </div>
+                                <div className="rounded-lg border p-3">
+                                    <div className="text-xs text-muted-foreground">Branch</div>
+                                    <div className="mt-1 font-medium">{branchLabel(detailsSale.branch_key)}</div>
+                                </div>
+                                <div className="rounded-lg border p-3">
+                                    <div className="text-xs text-muted-foreground">Items</div>
+                                    <div className="mt-1 font-medium tabular-nums">{detailsSale.items.length}</div>
+                                </div>
+                            </div>
+
+                            <div className="rounded-md border overflow-hidden">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>Item</TableHead>
+                                            <TableHead className="text-right">Qty</TableHead>
+                                            <TableHead className="text-right">Price</TableHead>
+                                            <TableHead className="text-right">Line Total</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {detailsSale.items.map((it, idx) => (
+                                            <TableRow key={`${detailsSale.id}-${idx}`}> 
+                                                <TableCell className="font-medium">{it.name}</TableCell>
+                                                <TableCell className="text-right tabular-nums">{it.qty}</TableCell>
+                                                <TableCell className="text-right tabular-nums">{peso(it.price)}</TableCell>
+                                                <TableCell className="text-right tabular-nums">{peso(it.line_total)}</TableCell>
+                                            </TableRow>
+                                        ))}
+                                        {!detailsSale.items.length && (
+                                            <TableRow>
+                                                <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
+                                                    No items found.
+                                                </TableCell>
+                                            </TableRow>
+                                        )}
+                                    </TableBody>
+                                </Table>
+                            </div>
+
+                            <div className="grid gap-3 sm:grid-cols-3">
+                                <div className="rounded-lg border p-3">
+                                    <div className="text-xs text-muted-foreground">Subtotal</div>
+                                    <div className="mt-1 font-semibold tabular-nums">{peso(detailsSale.subtotal)}</div>
+                                </div>
+                                <div className="rounded-lg border p-3">
+                                    <div className="text-xs text-muted-foreground">Delivery Fee</div>
+                                    <div className="mt-1 font-semibold tabular-nums">{detailsSale.delivery_fee > 0 ? peso(detailsSale.delivery_fee) : '—'}</div>
+                                </div>
+                                <div className="rounded-lg border p-3">
+                                    <div className="text-xs text-muted-foreground">Total</div>
+                                    <div className="mt-1 font-semibold text-primary tabular-nums">{peso(detailsSale.total)}</div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsDetailsOpen(false)}>
+                            Close
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </AppLayout>
     );
 }

@@ -85,6 +85,7 @@ export default function Inventory() {
     const user = auth?.user ?? null;
     const userBranchKey = user?.branch_key ?? null;
     const isBranchRestrictedUser = !!user && ['staff', 'cashier', 'delivery'].includes(user.role) && !!userBranchKey;
+    const canRestock = !!user && user.role === 'staff';
 
     const { branch: globalBranch, setBranch: setGlobalBranch } = useBranchFilter();
 
@@ -655,12 +656,25 @@ export default function Inventory() {
                                                 const displayQty = conditionFilter === 'defective' ? item.defectiveQty : item.stock;
 
                                                 return (
-                                                    <TableRow key={itemId}>
+                                                    <TableRow
+                                                        key={itemId}
+                                                        className="cursor-pointer"
+                                                        role="button"
+                                                        tabIndex={0}
+                                                        onClick={() => setDetailsItem(item)}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter' || e.key === ' ') {
+                                                                e.preventDefault();
+                                                                setDetailsItem(item);
+                                                            }
+                                                        }}
+                                                    >
                                                         <TableCell>
                                                             <input
                                                                 type="checkbox"
                                                                 checked={selectedItems.includes(itemId)}
                                                                 onChange={() => toggleItemSelection(itemId)}
+                                                                onClick={(e) => e.stopPropagation()}
                                                                 className="rounded"
                                                             />
                                                         </TableCell>
@@ -715,22 +729,30 @@ export default function Inventory() {
                                                         <TableCell className="text-right">
                                                             <DropdownMenu>
                                                                 <DropdownMenuTrigger asChild>
-                                                                    <Button variant="ghost" size="sm">
+                                                                    <Button variant="ghost" size="sm" onClick={(e) => e.stopPropagation()}>
                                                                         <MoreHorizontal className="h-4 w-4" />
                                                                     </Button>
                                                                 </DropdownMenuTrigger>
                                                                 <DropdownMenuContent align="end" className="w-48">
+                                                                    {canRestock && (
+                                                                        <DropdownMenuItem
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                setRestockItem(item);
+                                                                                setRestockQty(1);
+                                                                            }}
+                                                                            disabled={item.branchKey === 'all'}
+                                                                        >
+                                                                            <Plus className="mr-2 h-4 w-4" />
+                                                                            Restock
+                                                                        </DropdownMenuItem>
+                                                                    )}
                                                                     <DropdownMenuItem
-                                                                        onClick={() => {
-                                                                            setRestockItem(item);
-                                                                            setRestockQty(1);
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setDetailsItem(item);
                                                                         }}
-                                                                        disabled={item.branchKey === 'all'}
                                                                     >
-                                                                        <Plus className="mr-2 h-4 w-4" />
-                                                                        Restock
-                                                                    </DropdownMenuItem>
-                                                                    <DropdownMenuItem onClick={() => setDetailsItem(item)}>
                                                                         <Eye className="mr-2 h-4 w-4" />
                                                                         View Details
                                                                     </DropdownMenuItem>
@@ -750,120 +772,135 @@ export default function Inventory() {
                 </Tabs>
             </div>
 
-            {/* Restock Dialog */}
-            <Dialog
-                open={!!restockItem}
-                onOpenChange={(open) => {
-                    if (!open) {
-                        setRestockItem(null);
-                        setRestockQty(1);
-                        setActionError('');
-                    }
-                }}
-            >
-                <DialogContent className="sm:max-w-3xl">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <Plus className="h-5 w-5 text-green-600" />
-                            Restock Product
-                        </DialogTitle>
-                        <DialogDescription>
-                            Add stock to <span className="font-semibold text-foreground">{restockItem?.name}</span>
-                        </DialogDescription>
-                    </DialogHeader>
+            {canRestock && (
+                <>
+                    {/* Restock Dialog */}
+                    <Dialog
+                        open={!!restockItem}
+                        onOpenChange={(open) => {
+                            if (!open) {
+                                setRestockItem(null);
+                                setRestockQty(1);
+                                setActionError('');
+                            }
+                        }}
+                    >
+                        <DialogContent className="sm:max-w-3xl">
+                            <DialogHeader>
+                                <DialogTitle className="flex items-center gap-2">
+                                    <Plus className="h-5 w-5 text-green-600" />
+                                    Restock Product
+                                </DialogTitle>
+                                <DialogDescription>
+                                    Add stock to <span className="font-semibold text-foreground">{restockItem?.name}</span>
+                                </DialogDescription>
+                            </DialogHeader>
 
-                    {restockItem && (
-                        <div className="grid gap-4 sm:grid-cols-2">
-                            <div className="space-y-4">
-                                <div className="flex items-center gap-3 rounded-lg border bg-muted/50 p-3">
-                                    <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 dark:bg-green-950">
-                                        <Package className="h-5 w-5 text-green-600" />
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                        <div className="font-medium text-sm truncate">{restockItem.name}</div>
-                                        <div className="text-xs text-muted-foreground">
-                                            SKU: {restockItem.sku} · {restockItem.branch}
+                            {restockItem && (
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                    <div className="space-y-4">
+                                        <div className="flex items-center gap-3 rounded-lg border bg-muted/50 p-3">
+                                            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-green-100 dark:bg-green-950">
+                                                <Package className="h-5 w-5 text-green-600" />
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="font-medium text-sm truncate">{restockItem.name}</div>
+                                                <div className="text-xs text-muted-foreground">
+                                                    SKU: {restockItem.sku} · {restockItem.branch}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="rounded-lg border p-3 space-y-2">
+                                            <div className="flex justify-between items-center text-sm">
+                                                <span className="text-muted-foreground">Current Stock</span>
+                                                <span className="font-semibold">{restockItem.stock} units</span>
+                                            </div>
+                                            <Progress
+                                                value={
+                                                    restockItem.maxStock > 0
+                                                        ? Math.min(100, (restockItem.stock / restockItem.maxStock) * 100)
+                                                        : 0
+                                                }
+                                                className="h-2"
+                                            />
+                                            <div className="flex justify-between text-xs text-muted-foreground">
+                                                <span>Min: {restockItem.minStock}</span>
+                                                <span>Max: {restockItem.maxStock}</span>
+                                            </div>
                                         </div>
                                     </div>
-                                </div>
 
-                                <div className="rounded-lg border p-3 space-y-2">
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="text-muted-foreground">Current Stock</span>
-                                        <span className="font-semibold">{restockItem.stock} units</span>
-                                    </div>
-                                    <Progress
-                                        value={restockItem.maxStock > 0 ? Math.min(100, (restockItem.stock / restockItem.maxStock) * 100) : 0}
-                                        className="h-2"
-                                    />
-                                    <div className="flex justify-between text-xs text-muted-foreground">
-                                        <span>Min: {restockItem.minStock}</span>
-                                        <span>Max: {restockItem.maxStock}</span>
-                                    </div>
-                                </div>
-                            </div>
+                                    <div className="space-y-4">
+                                        <div className="flex items-center justify-between rounded-lg border p-3">
+                                            <div>
+                                                <div className="text-sm font-medium">Add Quantity</div>
+                                                <div className="text-xs text-muted-foreground">Units to add to current stock</div>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <Button
+                                                    variant="outline"
+                                                    size="icon"
+                                                    className="h-8 w-8"
+                                                    onClick={() => setRestockQty((q) => Math.max(1, q - 1))}
+                                                    disabled={restockQty <= 1}
+                                                >
+                                                    <Minus className="h-3.5 w-3.5" />
+                                                </Button>
+                                                <Input
+                                                    type="number"
+                                                    min={1}
+                                                    value={restockQty}
+                                                    onChange={(e) => setRestockQty(Math.max(1, Number(e.target.value) || 1))}
+                                                    className="h-8 w-16 text-center"
+                                                />
+                                                <Button
+                                                    variant="outline"
+                                                    size="icon"
+                                                    className="h-8 w-8"
+                                                    onClick={() => setRestockQty((q) => q + 1)}
+                                                >
+                                                    <Plus className="h-3.5 w-3.5" />
+                                                </Button>
+                                            </div>
+                                        </div>
 
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between rounded-lg border p-3">
-                                    <div>
-                                        <div className="text-sm font-medium">Add Quantity</div>
-                                        <div className="text-xs text-muted-foreground">Units to add to current stock</div>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                        <Button
-                                            variant="outline"
-                                            size="icon"
-                                            className="h-8 w-8"
-                                            onClick={() => setRestockQty((q) => Math.max(1, q - 1))}
-                                            disabled={restockQty <= 1}
-                                        >
-                                            <Minus className="h-3.5 w-3.5" />
-                                        </Button>
-                                        <Input
-                                            type="number"
-                                            min={1}
-                                            value={restockQty}
-                                            onChange={(e) => setRestockQty(Math.max(1, Number(e.target.value) || 1))}
-                                            className="h-8 w-16 text-center"
-                                        />
-                                        <Button
-                                            variant="outline"
-                                            size="icon"
-                                            className="h-8 w-8"
-                                            onClick={() => setRestockQty((q) => q + 1)}
-                                        >
-                                            <Plus className="h-3.5 w-3.5" />
-                                        </Button>
+                                        <div className="flex items-center justify-between rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 p-3">
+                                            <span className="text-sm text-green-700 dark:text-green-400">Stock after restock</span>
+                                            <span className="text-sm font-bold text-green-700 dark:text-green-400">
+                                                {restockItem.stock + restockQty} units
+                                            </span>
+                                        </div>
+
+                                        {actionError && (
+                                            <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                                                {actionError}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
+                            )}
 
-                                <div className="flex items-center justify-between rounded-lg bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 p-3">
-                                    <span className="text-sm text-green-700 dark:text-green-400">Stock after restock</span>
-                                    <span className="text-sm font-bold text-green-700 dark:text-green-400">
-                                        {restockItem.stock + restockQty} units
-                                    </span>
-                                </div>
-
-                                {actionError && (
-                                    <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                                        {actionError}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    <DialogFooter className="gap-2 sm:gap-2">
-                        <Button variant="outline" onClick={() => { setRestockItem(null); setRestockQty(1); setActionError(''); }}>
-                            Cancel
-                        </Button>
-                        <Button onClick={applyManualRestock} className="bg-green-600 hover:bg-green-700 text-white">
-                            <Plus className="mr-2 h-4 w-4" />
-                            Confirm Restock
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+                            <DialogFooter className="gap-2 sm:gap-2">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                        setRestockItem(null);
+                                        setRestockQty(1);
+                                        setActionError('');
+                                    }}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button onClick={applyManualRestock} className="bg-green-600 hover:bg-green-700 text-white">
+                                    <Plus className="mr-2 h-4 w-4" />
+                                    Confirm Restock
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                </>
+            )}
 
             {/* Product Details Dialog */}
             <Dialog open={!!detailsItem} onOpenChange={(open) => { if (!open) setDetailsItem(null); }}>

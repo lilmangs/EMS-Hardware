@@ -7,6 +7,7 @@ import {
     XCircle,
     Search,
     Eye,
+    MoreHorizontal,
 } from 'lucide-react';
 import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
@@ -23,6 +24,12 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -390,7 +397,19 @@ export default function Refunds() {
                                 </TableHeader>
                                 <TableBody>
                                     {refunds.map((r) => (
-                                        <TableRow key={r.id}>
+                                        <TableRow
+                                            key={r.id}
+                                            className="cursor-pointer hover:bg-muted/50"
+                                            role="button"
+                                            tabIndex={0}
+                                            onClick={() => openView(r)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' || e.key === ' ') {
+                                                    e.preventDefault();
+                                                    openView(r);
+                                                }
+                                            }}
+                                        >
                                             <TableCell className="whitespace-nowrap">{formatDateTime(r.created_at)}</TableCell>
                                             <TableCell className="font-medium">{r.ref}</TableCell>
                                             <TableCell className="text-muted-foreground">{r.sale?.ref ?? '—'}</TableCell>
@@ -405,10 +424,28 @@ export default function Refunds() {
                                             <TableCell className="text-muted-foreground">{r.processed_by?.name ?? '—'}</TableCell>
                                             <TableCell className="text-right">
                                                 <div className="inline-flex items-center gap-2">
-                                                    <Button variant="outline" size="sm" onClick={() => openView(r)}>
-                                                        <Eye className="mr-2 h-4 w-4" />
-                                                        View
-                                                    </Button>
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <button
+                                                                type="button"
+                                                                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                                                                onClick={(e) => e.stopPropagation()}
+                                                            >
+                                                                <MoreHorizontal className="h-4 w-4" />
+                                                            </button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end" className="w-44">
+                                                            <DropdownMenuItem
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    openView(r);
+                                                                }}
+                                                            >
+                                                                <Eye className="mr-2 h-4 w-4" />
+                                                                View
+                                                            </DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
                                                 </div>
                                             </TableCell>
                                         </TableRow>
@@ -470,7 +507,7 @@ export default function Refunds() {
                         if (!open) setSelectedRefund(null);
                     }}
                 >
-                    <DialogContent className="sm:max-w-2xl">
+                    <DialogContent className="sm:max-w-5xl">
                         <DialogHeader>
                             <DialogTitle>Refund Details</DialogTitle>
                             <DialogDescription>Review refund information and refunded items.</DialogDescription>
@@ -479,46 +516,48 @@ export default function Refunds() {
                         {!selectedRefund ? (
                             <div className="text-sm text-muted-foreground">No refund selected.</div>
                         ) : (
-                            <div className="space-y-4">
-                                <div className="grid gap-3 rounded-md border p-4 text-sm sm:grid-cols-2">
-                                    <div>
-                                        <div className="text-muted-foreground">Refund Ref</div>
-                                        <div className="font-medium">{selectedRefund.ref}</div>
+                            <div className="grid gap-4 lg:grid-cols-2">
+                                <div className="space-y-4">
+                                    <div className="grid gap-3 rounded-md border p-4 text-sm sm:grid-cols-2">
+                                        <div>
+                                            <div className="text-muted-foreground">Refund Ref</div>
+                                            <div className="font-medium">{selectedRefund.ref}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-muted-foreground">Sale Ref</div>
+                                            <div className="font-medium">{selectedRefund.sale?.ref ?? '—'}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-muted-foreground">Branch</div>
+                                            <div className="font-medium">{selectedRefund.branch_key === 'lagonglong' ? 'Lagonglong' : 'Balingasag'}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-muted-foreground">Created</div>
+                                            <div className="font-medium">{formatDateTime(selectedRefund.created_at)}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-muted-foreground">Processed</div>
+                                            <div className="font-medium">{formatDateTime(selectedRefund.processed_at)}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-muted-foreground">Processed By</div>
+                                            <div className="font-medium">{selectedRefund.processed_by?.name ?? '—'}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-muted-foreground">Amount</div>
+                                            <div className="font-semibold tabular-nums">{peso(selectedRefund.amount)}</div>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <div className="text-muted-foreground">Sale Ref</div>
-                                        <div className="font-medium">{selectedRefund.sale?.ref ?? '—'}</div>
-                                    </div>
-                                    <div>
-                                        <div className="text-muted-foreground">Branch</div>
-                                        <div className="font-medium">{selectedRefund.branch_key === 'lagonglong' ? 'Lagonglong' : 'Balingasag'}</div>
-                                    </div>
-                                    <div>
-                                        <div className="text-muted-foreground">Created</div>
-                                        <div className="font-medium">{formatDateTime(selectedRefund.created_at)}</div>
-                                    </div>
-                                    <div>
-                                        <div className="text-muted-foreground">Processed</div>
-                                        <div className="font-medium">{formatDateTime(selectedRefund.processed_at)}</div>
-                                    </div>
-                                    <div>
-                                        <div className="text-muted-foreground">Processed By</div>
-                                        <div className="font-medium">{selectedRefund.processed_by?.name ?? '—'}</div>
-                                    </div>
-                                    <div>
-                                        <div className="text-muted-foreground">Amount</div>
-                                        <div className="font-semibold tabular-nums">{peso(selectedRefund.amount)}</div>
-                                    </div>
-                                </div>
 
-                                <div className="rounded-md border p-4 text-sm">
-                                    <div className="text-muted-foreground">Reason</div>
-                                    <div className="mt-1 font-medium">{selectedRefund.reason ?? '—'}</div>
+                                    <div className="rounded-md border p-4 text-sm">
+                                        <div className="text-muted-foreground">Reason</div>
+                                        <div className="mt-1 font-medium">{selectedRefund.reason ?? '—'}</div>
+                                    </div>
                                 </div>
 
                                 <div className="rounded-md border">
                                     <div className="border-b px-4 py-3 text-sm font-medium">Refunded Items</div>
-                                    <div className="max-h-[40vh] overflow-auto">
+                                    <div className="max-h-[60vh] overflow-auto">
                                         <Table>
                                             <TableHeader>
                                                 <TableRow>

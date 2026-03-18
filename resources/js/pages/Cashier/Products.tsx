@@ -2,7 +2,7 @@ import { Head, router, usePage } from '@inertiajs/react';
 import {
     Search, Package, MoreVertical, Barcode, Printer, Eye, Minus, Plus,
     LayoutGrid, List, ArrowUpDown, AlertTriangle, CheckCircle, XCircle,
-    DollarSign, Boxes, TrendingUp, SortAsc, SortDesc, Info, Pencil
+    DollarSign, Boxes, TrendingUp, SortAsc, SortDesc, Info, Pencil, Trash2
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import JsBarcode from 'jsbarcode';
@@ -147,6 +147,7 @@ export default function Products() {
     const user = auth?.user ?? null;
     const isOwner = user?.role === 'owner';
     const canAddProduct = user?.role === 'staff';
+    const canManageProducts = user?.role === 'staff';
     const userBranchKey = user?.branch_key ?? null;
     const isBranchRestrictedUser = !!user && ['staff', 'cashier', 'delivery'].includes(user.role) && !!userBranchKey;
 
@@ -193,6 +194,29 @@ export default function Products() {
         if (['defective', 'out_of_stock', 'reserved', 'low_stock'].includes(v)) return v as any;
         return 'reserved';
     });
+
+    useEffect(() => {
+        if (isBranchRestrictedUser) return;
+
+        const url = new URL(window.location.href);
+        const current = String(url.searchParams.get('branch_key') ?? '');
+        const next = effectiveBranch === 'all' ? '' : effectiveBranch;
+
+        if (current === next) return;
+
+        if (effectiveBranch !== 'all') {
+            url.searchParams.set('branch_key', effectiveBranch);
+        } else {
+            url.searchParams.delete('branch_key');
+        }
+
+        router.visit(url.toString(), {
+            only: ['products', 'filters'],
+            preserveScroll: true,
+            preserveState: true,
+            replace: true,
+        });
+    }, [effectiveBranch, isBranchRestrictedUser]);
 
     useEffect(() => {
         setProducts(productsPaginator?.data ?? []);
@@ -353,6 +377,11 @@ export default function Products() {
     const [editProductImage, setEditProductImage] = useState<File | null>(null);
     const [editProductImagePreviewUrl, setEditProductImagePreviewUrl] = useState<string | null>(null);
 
+    // Remove dialog state
+    const [removeProduct, setRemoveProduct] = useState<Product | null>(null);
+    const [removeError, setRemoveError] = useState('');
+    const [isRemoving, setIsRemoving] = useState(false);
+
     useEffect(() => {
         return () => {
             if (editProductImagePreviewUrl) {
@@ -396,21 +425,65 @@ export default function Products() {
 
     // --- Barcode Logic ---
     const openBarcodeDialog = (product: Product) => {
+        if (!canManageProducts) return;
         setBarcodeProduct(product);
         setBarcodeQty(1);
         setBarcodesGenerated(false);
     };
 
     const openEditDialog = (product: Product) => {
+        if (!canManageProducts) return;
         setEditProduct(product);
         setEditProductImage(null);
         setEditProductImagePreviewUrl(productImageUrl(product.image_path));
         setIsEditProductOpen(true);
     };
 
+    const openRemoveDialog = (product: Product) => {
+        if (!canManageProducts) return;
+        setRemoveProduct(product);
+        setRemoveError('');
+    };
+
     const closeBarcodeDialog = () => {
         setBarcodeProduct(null);
         setBarcodesGenerated(false);
+    };
+
+    const closeRemoveDialog = () => {
+        setRemoveProduct(null);
+        setRemoveError('');
+        setIsRemoving(false);
+    };
+
+    const onRemoveProduct = () => {
+        if (!removeProduct) return;
+
+        setIsRemoving(true);
+        setRemoveError('');
+
+        router.delete(`/Products/${removeProduct.id}`, {
+            preserveScroll: true,
+            onError: (errors) => {
+                const anyErr = (errors as any) ?? {};
+                const msg =
+                    typeof anyErr?.message === 'string'
+                        ? anyErr.message
+                        : typeof anyErr?.error === 'string'
+                            ? anyErr.error
+                            : 'Failed to remove product.';
+                setRemoveError(msg);
+                setIsRemoving(false);
+            },
+            onSuccess: () => {
+                setProductsRefreshNonce((n) => n + 1);
+                router.visit(window.location.href, { only: ['products'], preserveScroll: true });
+                closeRemoveDialog();
+            },
+            onFinish: () => {
+                setIsRemoving(false);
+            },
+        });
     };
 
     const generateBarcodes = useCallback(() => {
@@ -782,9 +855,10 @@ export default function Products() {
                                     <ProductCardGrid
                                         key={p.id}
                                         product={p}
-                                        onGenerateBarcode={openBarcodeDialog}
+                                        onGenerateBarcode={canManageProducts ? openBarcodeDialog : undefined}
                                         onViewDetails={setDetailsProduct}
-                                        onEdit={openEditDialog}
+                                        onEdit={canManageProducts ? openEditDialog : undefined}
+                                        onRemove={canManageProducts ? openRemoveDialog : undefined}
                                         branch={effectiveBranch}
                                         hideBadges={statusFilter === 'defective'}
                                     />
@@ -797,9 +871,10 @@ export default function Products() {
                                 <ProductCardList
                                     key={p.id}
                                     product={p}
-                                    onGenerateBarcode={openBarcodeDialog}
+                                    onGenerateBarcode={canManageProducts ? openBarcodeDialog : undefined}
                                     onViewDetails={setDetailsProduct}
-                                    onEdit={openEditDialog}
+                                    onEdit={canManageProducts ? openEditDialog : undefined}
+                                    onRemove={canManageProducts ? openRemoveDialog : undefined}
                                     branch={effectiveBranch}
                                     hideBadges={statusFilter === 'defective'}
                                 />
@@ -943,24 +1018,25 @@ export default function Products() {
                                 Close
                             </Button>
                         </DialogFooter>
-                    </DialogContent>
-                </Dialog>
+                        </DialogContent>
+                    </Dialog>
 
-                <Dialog
-                    open={isEditProductOpen}
-                    onOpenChange={(open) => {
-                        setIsEditProductOpen(open);
-                        if (!open) {
-                            setEditProduct(null);
-                            setEditProductImage(null);
-                            if (editProductImagePreviewUrl) {
-                                URL.revokeObjectURL(editProductImagePreviewUrl);
+                {canManageProducts && (
+                    <Dialog
+                        open={isEditProductOpen}
+                        onOpenChange={(open) => {
+                            setIsEditProductOpen(open);
+                            if (!open) {
+                                setEditProduct(null);
+                                setEditProductImage(null);
+                                if (editProductImagePreviewUrl) {
+                                    URL.revokeObjectURL(editProductImagePreviewUrl);
+                                }
+                                setEditProductImagePreviewUrl(null);
                             }
-                            setEditProductImagePreviewUrl(null);
-                        }
-                    }}
-                >
-                    <DialogContent className="sm:max-w-6xl">
+                        }}
+                    >
+                        <DialogContent className="sm:max-w-6xl">
                         <DialogHeader>
                             <DialogTitle>Edit Product</DialogTitle>
                             <DialogDescription>Update product information.</DialogDescription>
@@ -1213,102 +1289,136 @@ export default function Products() {
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
+                )}
 
-                <Dialog
-                    open={!!barcodeProduct}
-                    onOpenChange={(open) => {
-                        if (!open) {
-                            closeBarcodeDialog();
-                            if (barcodeContainerRef.current) {
-                                barcodeContainerRef.current.innerHTML = '';
+                {canManageProducts && (
+                    <Dialog
+                        open={!!barcodeProduct}
+                        onOpenChange={(open) => {
+                            if (!open) {
+                                closeBarcodeDialog();
+                                if (barcodeContainerRef.current) {
+                                    barcodeContainerRef.current.innerHTML = '';
+                                }
                             }
-                        }
-                    }}
-                >
-                    <DialogContent className="sm:max-w-3xl">
-                        <DialogHeader>
-                            <DialogTitle>Generate Barcodes</DialogTitle>
-                            <DialogDescription>Generate printable barcodes for the selected product.</DialogDescription>
-                        </DialogHeader>
+                        }}
+                    >
+                        <DialogContent className="sm:max-w-3xl">
+                            <DialogHeader>
+                                <DialogTitle>Generate Barcodes</DialogTitle>
+                                <DialogDescription>Generate printable barcodes for the selected product.</DialogDescription>
+                            </DialogHeader>
 
-                        {!barcodeProduct ? (
-                            <div className="text-sm text-muted-foreground">No product selected.</div>
-                        ) : (
-                            <div className="space-y-4">
-                                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                                    <div className="min-w-0">
-                                        <div className="font-semibold truncate">{barcodeProduct.name}</div>
-                                        <div className="text-xs text-muted-foreground font-mono truncate">SKU: {barcodeProduct.sku}</div>
-                                    </div>
-
-                                    <div className="flex items-end gap-2">
-                                        <div className="space-y-1">
-                                            <label className="text-xs font-medium text-muted-foreground">Quantity</label>
-                                            <Input
-                                                type="number"
-                                                min={1}
-                                                value={barcodeQty}
-                                                onChange={(e) => {
-                                                    const n = Number(e.target.value) || 1;
-                                                    setBarcodeQty(Math.max(1, n));
-                                                    setBarcodesGenerated(false);
-                                                    if (barcodeContainerRef.current) {
-                                                        barcodeContainerRef.current.innerHTML = '';
-                                                    }
-                                                }}
-                                                className="w-[120px]"
-                                            />
+                            {!barcodeProduct ? (
+                                <div className="text-sm text-muted-foreground">No product selected.</div>
+                            ) : (
+                                <div className="space-y-4">
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                                        <div className="min-w-0">
+                                            <div className="font-semibold truncate">{barcodeProduct.name}</div>
+                                            <div className="text-xs text-muted-foreground font-mono truncate">SKU: {barcodeProduct.sku}</div>
                                         </div>
 
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            onClick={generateBarcodes}
-                                            disabled={!barcodeProduct}
-                                        >
-                                            Generate
-                                        </Button>
-                                    </div>
-                                </div>
+                                        <div className="flex items-end gap-2">
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-medium text-muted-foreground">Quantity</label>
+                                                <Input
+                                                    type="number"
+                                                    min={1}
+                                                    value={barcodeQty}
+                                                    onChange={(e) => {
+                                                        const n = Number(e.target.value) || 1;
+                                                        setBarcodeQty(Math.max(1, n));
+                                                        setBarcodesGenerated(false);
+                                                        if (barcodeContainerRef.current) {
+                                                            barcodeContainerRef.current.innerHTML = '';
+                                                        }
+                                                    }}
+                                                    className="w-[120px]"
+                                                />
+                                            </div>
 
-                                <div className="rounded-lg border bg-muted/30 p-3">
-                                    <div className="max-h-[55vh] overflow-auto">
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={generateBarcodes}
+                                                disabled={!barcodeProduct}
+                                            >
+                                                Generate
+                                            </Button>
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-lg border bg-muted/30 p-3">
                                         <div
                                             ref={barcodeContainerRef}
-                                            className="flex flex-wrap gap-3 justify-center"
+                                            className="barcode-grid flex flex-wrap gap-3 justify-center max-h-72 overflow-auto rounded-lg border bg-white p-4 dark:bg-zinc-950"
+                                            style={{ minHeight: barcodesGenerated ? '120px' : '0' }}
                                         />
+
+                                        {!barcodesGenerated && (
+                                            <div className="flex flex-col items-center justify-center py-10 text-muted-foreground">
+                                                <Barcode className="h-10 w-10 mb-2 opacity-30" />
+                                                <span className="text-sm">Set quantity and click generate to preview barcodes</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            )}
+
+                            <DialogFooter className="gap-2 sm:gap-0">
+                                {barcodesGenerated && (
+                                    <>
+                                        <Button variant="outline" onClick={generateBarcodes}>
+                                            Regenerate
+                                        </Button>
+                                        <Button onClick={printBarcodes}>Print Barcodes</Button>
+                                    </>
+                                )}
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                )}
+
+                {canManageProducts && (
+                    <Dialog
+                        open={!!removeProduct}
+                        onOpenChange={(open) => {
+                            if (!open) closeRemoveDialog();
+                        }}
+                    >
+                        <DialogContent className="sm:max-w-lg">
+                            <DialogHeader>
+                                <DialogTitle>Remove Product</DialogTitle>
+                                <DialogDescription>This action cannot be undone.</DialogDescription>
+                            </DialogHeader>
+
+                            {!removeProduct ? (
+                                <div className="text-sm text-muted-foreground">No product selected.</div>
+                            ) : (
+                                <div className="space-y-3">
+                                    <div className="rounded-md border bg-muted/30 p-3">
+                                        <div className="text-sm font-semibold">{removeProduct.name}</div>
+                                        <div className="text-xs text-muted-foreground font-mono mt-1">SKU: {removeProduct.sku}</div>
                                     </div>
 
-                                    {!barcodesGenerated && (
-                                        <div className="mt-3 text-center text-xs text-muted-foreground">
-                                            Click “Generate” to preview barcodes.
-                                        </div>
+                                    {removeError && (
+                                        <div className="text-sm text-destructive">{removeError}</div>
                                     )}
                                 </div>
-                            </div>
-                        )}
+                            )}
 
-                        <DialogFooter>
-                            <Button
-                                variant="outline"
-                                onClick={() => {
-                                    closeBarcodeDialog();
-                                    if (barcodeContainerRef.current) {
-                                        barcodeContainerRef.current.innerHTML = '';
-                                    }
-                                }}
-                            >
-                                Close
-                            </Button>
-                            <Button
-                                onClick={printBarcodes}
-                                disabled={!barcodeProduct || !barcodesGenerated}
-                            >
-                                Print
-                            </Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
+                            <DialogFooter>
+                                <Button variant="outline" onClick={closeRemoveDialog} disabled={isRemoving}>
+                                    Cancel
+                                </Button>
+                                <Button variant="destructive" onClick={onRemoveProduct} disabled={!removeProduct || isRemoving}>
+                                    Remove
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                )}
 
                 {canAddProduct && (
                     <Dialog
@@ -1617,13 +1727,15 @@ function ProductCardGrid({
     onGenerateBarcode,
     onViewDetails,
     onEdit,
+    onRemove,
     branch,
     hideBadges,
 }: {
     product: Product;
-    onGenerateBarcode: (p: Product) => void;
+    onGenerateBarcode?: (p: Product) => void;
     onViewDetails: (p: Product) => void;
-    onEdit: (p: Product) => void;
+    onEdit?: (p: Product) => void;
+    onRemove?: (p: Product) => void;
     branch: 'all' | 'lagonglong' | 'balingasag';
     hideBadges: boolean;
 }) {
@@ -1635,28 +1747,76 @@ function ProductCardGrid({
     const defectiveQty = Number(product.defective_qty ?? 0) || 0;
 
     return (
-        <div className="group relative overflow-hidden rounded-xl border bg-card text-left shadow-sm hover:shadow-md transition-all duration-200">
+        <div
+            className="group relative overflow-hidden rounded-xl border bg-card text-left shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer"
+            role="button"
+            tabIndex={0}
+            onClick={() => onViewDetails(product)}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onViewDetails(product);
+                }
+            }}
+        >
             {/* Dropdown */}
             <div className="absolute top-1.5 right-1.5 z-10">
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <button className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-background/80 backdrop-blur-sm text-muted-foreground shadow-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-background hover:text-foreground">
+                        <button
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-md bg-background/80 backdrop-blur-sm text-muted-foreground shadow-sm opacity-0 group-hover:opacity-100 transition-opacity hover:bg-background hover:text-foreground"
+                            onClick={(e) => e.stopPropagation()}
+                        >
                             <MoreVertical className="h-4 w-4" />
                         </button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-48">
-                        <DropdownMenuItem onClick={() => onViewDetails(product)}>
+                        <DropdownMenuItem
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onViewDetails(product);
+                            }}
+                        >
                             <Eye className="h-4 w-4" />
                             View Details
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => onEdit(product)}>
-                            <Pencil className="h-4 w-4" />
-                            Edit
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => onGenerateBarcode(product)}>
-                            <Barcode className="h-4 w-4" />
-                            Generate Barcode
-                        </DropdownMenuItem>
+                        {onEdit && (
+                            <DropdownMenuItem
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onEdit(product);
+                                }}
+                            >
+                                <Pencil className="h-4 w-4" />
+                                Edit
+                            </DropdownMenuItem>
+                        )}
+                        {onGenerateBarcode && (
+                            <DropdownMenuItem
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onGenerateBarcode(product);
+                                }}
+                            >
+                                <Barcode className="h-4 w-4" />
+                                Generate Barcode
+                            </DropdownMenuItem>
+                        )}
+                        {onRemove && (
+                            <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        onRemove(product);
+                                    }}
+                                    className="text-destructive"
+                                >
+                                    <Trash2 className="h-4 w-4" />
+                                    Remove
+                                </DropdownMenuItem>
+                            </>
+                        )}
                     </DropdownMenuContent>
                 </DropdownMenu>
             </div>
@@ -1718,13 +1878,15 @@ function ProductCardList({
     onGenerateBarcode,
     onViewDetails,
     onEdit,
+    onRemove,
     branch,
     hideBadges,
 }: {
     product: Product;
-    onGenerateBarcode: (p: Product) => void;
+    onGenerateBarcode?: (p: Product) => void;
     onViewDetails: (p: Product) => void;
-    onEdit: (p: Product) => void;
+    onEdit?: (p: Product) => void;
+    onRemove?: (p: Product) => void;
     branch: 'all' | 'lagonglong' | 'balingasag';
     hideBadges: boolean;
 }) {
@@ -1736,7 +1898,18 @@ function ProductCardList({
     const defectiveQty = Number(product.defective_qty ?? 0) || 0;
 
     return (
-        <div className="group flex items-center gap-4 rounded-lg border bg-card p-3 hover:shadow-sm transition-all">
+        <div
+            className="group flex items-center gap-4 rounded-lg border bg-card p-3 hover:shadow-sm transition-all cursor-pointer"
+            role="button"
+            tabIndex={0}
+            onClick={() => onViewDetails(product)}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onViewDetails(product);
+                }
+            }}
+        >
             {/* Icon */}
             <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-muted relative overflow-hidden ${status === 'out' ? 'opacity-50' : ''}`}>
                 <div className="absolute inset-0 bg-gradient-to-br from-orange-100 to-orange-200 opacity-20" />
@@ -1783,24 +1956,63 @@ function ProductCardList({
             {/* Actions */}
             <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                    <button className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0">
+                    <button
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                    >
                         <MoreVertical className="h-4 w-4" />
                     </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-48">
-                    <DropdownMenuItem onClick={() => onViewDetails(product)}>
+                    <DropdownMenuItem
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onViewDetails(product);
+                        }}
+                    >
                         <Eye className="h-4 w-4" />
                         View Details
                     </DropdownMenuItem>
-                    <DropdownMenuItem onClick={() => onEdit(product)}>
-                        <Pencil className="h-4 w-4" />
-                        Edit
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => onGenerateBarcode(product)}>
-                        <Barcode className="h-4 w-4" />
-                        Generate Barcode
-                    </DropdownMenuItem>
+                    {onEdit && (
+                        <DropdownMenuItem
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                onEdit(product);
+                            }}
+                        >
+                            <Pencil className="h-4 w-4" />
+                            Edit
+                        </DropdownMenuItem>
+                    )}
+                    {onGenerateBarcode && (
+                        <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onGenerateBarcode(product);
+                                }}
+                            >
+                                <Barcode className="h-4 w-4" />
+                                Generate Barcode
+                            </DropdownMenuItem>
+                        </>
+                    )}
+                    {onRemove && (
+                        <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onRemove(product);
+                                }}
+                                className="text-destructive"
+                            >
+                                <Trash2 className="h-4 w-4" />
+                                Remove
+                            </DropdownMenuItem>
+                        </>
+                    )}
                 </DropdownMenuContent>
             </DropdownMenu>
         </div>

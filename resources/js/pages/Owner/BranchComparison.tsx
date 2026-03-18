@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
-import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Package } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Package, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -50,10 +50,13 @@ export default function BranchComparison() {
         const load = async () => {
             setIsLoading(true);
             setError(null);
+            setData(null);
             try {
                 const qs = new URLSearchParams({ range });
                 const res = await fetch(`/BranchComparison/data?${qs.toString()}`, {
                     headers: { Accept: 'application/json' },
+                    credentials: 'same-origin',
+                    cache: 'no-store',
                     signal: controller.signal,
                 });
 
@@ -94,17 +97,216 @@ export default function BranchComparison() {
                 headers: { Accept: 'application/json' },
             });
             if (!res.ok) throw new Error('Request failed');
-            const json = await res.json();
+            const json = (await res.json()) as BranchComparisonResponse;
 
-            const blob = new Blob([JSON.stringify(json, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `branch-comparison-${range}.json`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            URL.revokeObjectURL(url);
+            const rangeLabel =
+                range === '1month'
+                    ? 'Last Month'
+                    : range === '3months'
+                        ? 'Last 3 Months'
+                        : range === '1year'
+                            ? 'Last Year'
+                            : 'Last 6 Months';
+
+            const formatPeso = (n: number) =>
+                `₱${(Number(n) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+            const safe = (v: unknown) => String(v ?? '—');
+            const formatDateTime = (raw: string) => {
+                const d = new Date(raw);
+                if (Number.isNaN(d.getTime())) return raw;
+                return d.toLocaleString(undefined, {
+                    year: 'numeric',
+                    month: 'short',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    hour12: true,
+                });
+            };
+
+            const printWindow = window.open('', '_blank');
+            if (!printWindow) throw new Error('Popup blocked');
+
+            const stamp = new Date().toLocaleString();
+            const filters = json.filters;
+            const branches = json.branches;
+
+            const monthlyRows = (json.monthlySales ?? [])
+                .map(
+                    (m) => `
+                        <tr>
+                            <td>${safe(m.month)}</td>
+                            <td style="text-align:right">${formatPeso(Number(m.lagonglong) || 0)}</td>
+                            <td style="text-align:right">${formatPeso(Number(m.balingasag) || 0)}</td>
+                        </tr>
+                    `
+                )
+                .join('');
+
+            const categoryRows = (json.categoryComparison ?? [])
+                .map(
+                    (c) => `
+                        <tr>
+                            <td>${safe(c.category)}</td>
+                            <td style="text-align:right">${formatPeso(Number(c.lagonglong) || 0)}</td>
+                            <td style="text-align:right">${formatPeso(Number(c.balingasag) || 0)}</td>
+                        </tr>
+                    `
+                )
+                .join('');
+
+            const topProductsRows = (json.topProducts ?? [])
+                .map(
+                    (p) => `
+                        <tr>
+                            <td>${safe(p.product)}</td>
+                            <td style="text-align:right">${formatPeso(Number(p.lagonglongSales) || 0)}</td>
+                            <td style="text-align:right">${formatPeso(Number(p.balingasagSales) || 0)}</td>
+                        </tr>
+                    `
+                )
+                .join('');
+
+            const html = `
+                <!doctype html>
+                <html>
+                <head>
+                    <meta charset="utf-8" />
+                    <meta name="viewport" content="width=device-width, initial-scale=1" />
+                    <title>Branch Comparison Report</title>
+                    <style>
+                        * { box-sizing: border-box; }
+                        body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; margin: 24px; color: #111827; }
+                        .muted { color: #6b7280; }
+                        .title { font-size: 20px; font-weight: 700; margin: 0; }
+                        .subtitle { margin: 6px 0 0; font-size: 12px; }
+                        .row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+                        .card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; min-width: 220px; flex: 1; }
+                        .card h3 { margin: 0; font-size: 12px; color: #6b7280; font-weight: 600; }
+                        .card .val { margin-top: 6px; font-size: 18px; font-weight: 700; }
+                        .section { margin-top: 16px; }
+                        .section h2 { font-size: 14px; margin: 0 0 8px; }
+                        table { width: 100%; border-collapse: collapse; }
+                        th, td { border: 1px solid #e5e7eb; padding: 8px; font-size: 12px; vertical-align: top; }
+                        th { background: #f9fafb; text-align: left; }
+                        .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+                        .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #f3f4f6; font-size: 11px; color: #374151; }
+                        @media print { body { margin: 0; } .no-print { display: none !important; } }
+                    </style>
+                </head>
+                <body>
+                    <div class="no-print" style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+                        <button onclick="window.print()" style="padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;background:#111827;color:white;cursor:pointer;">Print / Save as PDF</button>
+                    </div>
+
+                    <div>
+                        <p class="title">Branch Comparison Report</p>
+                        <p class="subtitle muted">${safe(rangeLabel)} • Generated ${safe(stamp)}</p>
+                        <p class="subtitle muted">Range: ${safe(formatDateTime(safe(filters?.from)))} to ${safe(formatDateTime(safe(filters?.to)))}</p>
+                        <p class="subtitle muted">Previous: ${safe(formatDateTime(safe(filters?.prev_from)))} to ${safe(formatDateTime(safe(filters?.prev_to)))}</p>
+                    </div>
+
+                    <div class="row">
+                        <div class="card">
+                            <h3>Total Sales</h3>
+                            <div class="val">${formatPeso(Number(json.summary?.totalSales) || 0)}</div>
+                        </div>
+                        <div class="card">
+                            <h3>Total Deliveries</h3>
+                            <div class="val">${safe(json.summary?.totalDeliveries ?? 0)}</div>
+                        </div>
+                        <div class="card">
+                            <h3>Total Customers</h3>
+                            <div class="val">${safe(json.summary?.totalCustomers ?? 0)}</div>
+                        </div>
+                        <div class="card">
+                            <h3>Avg Delivery Value</h3>
+                            <div class="val">${formatPeso(Number(json.summary?.avgDeliveryValue) || 0)}</div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h2>Branch Metrics</h2>
+                        <div class="grid2">
+                            <div class="card">
+                                <h3>${safe(branches?.lagonglong?.name ?? 'Lagonglong')}</h3>
+                                <div style="margin-top:8px;font-size:12px;">
+                                    <div><span class="pill">Sales</span> <strong>${formatPeso(Number(branches?.lagonglong?.totalSales) || 0)}</strong></div>
+                                    <div style="margin-top:6px;"><span class="pill">Deliveries</span> <strong>${safe(branches?.lagonglong?.totalDeliveries ?? 0)}</strong></div>
+                                    <div style="margin-top:6px;"><span class="pill">Avg Delivery</span> <strong>${formatPeso(Number(branches?.lagonglong?.avgDeliveryValue) || 0)}</strong></div>
+                                    <div style="margin-top:6px;"><span class="pill">Growth</span> <strong>${safe(Number(branches?.lagonglong?.growth ?? 0).toFixed(2))}%</strong></div>
+                                    <div style="margin-top:6px;"><span class="pill">Top Product</span> <strong>${safe(branches?.lagonglong?.topProduct ?? '—')}</strong></div>
+                                </div>
+                            </div>
+                            <div class="card">
+                                <h3>${safe(branches?.balingasag?.name ?? 'Balingasag')}</h3>
+                                <div style="margin-top:8px;font-size:12px;">
+                                    <div><span class="pill">Sales</span> <strong>${formatPeso(Number(branches?.balingasag?.totalSales) || 0)}</strong></div>
+                                    <div style="margin-top:6px;"><span class="pill">Deliveries</span> <strong>${safe(branches?.balingasag?.totalDeliveries ?? 0)}</strong></div>
+                                    <div style="margin-top:6px;"><span class="pill">Avg Delivery</span> <strong>${formatPeso(Number(branches?.balingasag?.avgDeliveryValue) || 0)}</strong></div>
+                                    <div style="margin-top:6px;"><span class="pill">Growth</span> <strong>${safe(Number(branches?.balingasag?.growth ?? 0).toFixed(2))}%</strong></div>
+                                    <div style="margin-top:6px;"><span class="pill">Top Product</span> <strong>${safe(branches?.balingasag?.topProduct ?? '—')}</strong></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="section">
+                        <h2>Monthly Sales</h2>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style="width:34%">Month</th>
+                                    <th style="width:33%;text-align:right">Lagonglong</th>
+                                    <th style="width:33%;text-align:right">Balingasag</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${monthlyRows || '<tr><td colspan="3" class="muted">No data</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="section">
+                        <h2>Category Comparison (Top 10)</h2>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style="width:34%">Category</th>
+                                    <th style="width:33%;text-align:right">Lagonglong</th>
+                                    <th style="width:33%;text-align:right">Balingasag</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${categoryRows || '<tr><td colspan="3" class="muted">No data</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="section">
+                        <h2>Top Products (Top 10)</h2>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th style="width:34%">Product</th>
+                                    <th style="width:33%;text-align:right">Lagonglong</th>
+                                    <th style="width:33%;text-align:right">Balingasag</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${topProductsRows || '<tr><td colspan="3" class="muted">No data</td></tr>'}
+                            </tbody>
+                        </table>
+                    </div>
+                </body>
+                </html>
+            `;
+
+            printWindow.document.open();
+            printWindow.document.write(html);
+            printWindow.document.close();
+            printWindow.focus();
         } catch {
             setError('Export failed.');
         }
@@ -181,6 +383,17 @@ export default function BranchComparison() {
 
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                            <CardTitle className="text-sm font-medium">Total Customers</CardTitle>
+                            <Users className="h-4 w-4 text-muted-foreground" />
+                        </CardHeader>
+                        <CardContent>
+                            <div className="text-2xl font-bold">{isLoading ? '…' : totalCustomers}</div>
+                            <div className="text-xs text-muted-foreground">Unique delivery customers</div>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-medium">Avg Delivery Value</CardTitle>
                             <Package className="h-4 w-4 text-muted-foreground" />
                         </CardHeader>
@@ -241,17 +454,19 @@ export default function BranchComparison() {
                                         <div className="py-10 text-center text-muted-foreground">No category data available.</div>
                                     ) : (
                                         (data?.categoryComparison ?? []).map((category) => {
-                                        const total = category.lagonglong + category.balingasag;
-                                        const lagonglongPercent = (category.lagonglong / total) * 100;
-                                        const balingasagPercent = (category.balingasag / total) * 100;
+                                        const lagonglongValue = Number(category.lagonglong) || 0;
+                                        const balingasagValue = Number(category.balingasag) || 0;
+                                        const total = lagonglongValue + balingasagValue;
+                                        const lagonglongPercent = total > 0 ? (lagonglongValue / total) * 100 : 0;
+                                        const balingasagPercent = total > 0 ? (balingasagValue / total) * 100 : 0;
 
                                         return (
                                             <div key={category.category} className="space-y-2">
                                                 <div className="flex items-center justify-between">
                                                     <span className="font-medium">{category.category}</span>
                                                     <div className="flex items-center gap-4 text-sm">
-                                                        <span>Lagonglong: ₱{category.lagonglong.toLocaleString()}</span>
-                                                        <span>Balingasag: ₱{category.balingasag.toLocaleString()}</span>
+                                                        <span>Lagonglong: {peso(lagonglongValue)}</span>
+                                                        <span>Balingasag: {peso(balingasagValue)}</span>
                                                     </div>
                                                 </div>
                                                 <div className="flex gap-2">
@@ -298,14 +513,16 @@ export default function BranchComparison() {
                                             </thead>
                                             <tbody>
                                                 {(data?.topProducts ?? []).map((product) => {
-                                                    const total = product.lagonglongSales + product.balingasagSales;
-                                                    const isLagonglongBetter = product.lagonglongSales > product.balingasagSales;
+                                                    const lagonglongSales = Number(product.lagonglongSales) || 0;
+                                                    const balingasagSales = Number(product.balingasagSales) || 0;
+                                                    const total = lagonglongSales + balingasagSales;
+                                                    const isLagonglongBetter = lagonglongSales > balingasagSales;
 
                                                     return (
                                                         <tr key={product.product} className="border-b">
                                                             <td className="p-2 font-medium">{product.product}</td>
-                                                            <td className="text-right p-2">{peso(product.lagonglongSales)}</td>
-                                                            <td className="text-right p-2">{peso(product.balingasagSales)}</td>
+                                                            <td className="text-right p-2">{peso(lagonglongSales)}</td>
+                                                            <td className="text-right p-2">{peso(balingasagSales)}</td>
                                                             <td className="text-right p-2 font-medium">{peso(total)}</td>
                                                             <td className="text-center p-2">
                                                                 <Badge variant={isLagonglongBetter ? 'default' : 'secondary'}>

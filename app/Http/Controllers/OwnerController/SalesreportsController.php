@@ -17,6 +17,34 @@ class SalesreportsController extends Controller
         return Inertia::render('Owner/SalesReports');
     }
 
+    public function show(Request $request, PosSale $sale): JsonResponse
+    {
+        $sale->load([
+            'items:id,pos_sale_id,name,price,qty,line_total',
+            'delivery:id,pos_sale_id,delivery_fee',
+        ]);
+
+        return response()->json([
+            'sale' => [
+                'id' => $sale->id,
+                'ref' => $sale->ref,
+                'branch_key' => $sale->branch_key,
+                'created_at' => $sale->created_at?->toISOString(),
+                'subtotal' => (float) ($sale->subtotal ?? 0),
+                'delivery_fee' => $sale->delivery ? (float) ($sale->delivery->delivery_fee ?? 0) : 0.0,
+                'total' => (float) ($sale->total ?? 0),
+                'items' => $sale->items->map(function ($it) {
+                    return [
+                        'name' => $it->name,
+                        'price' => (float) ($it->price ?? 0),
+                        'qty' => (int) ($it->qty ?? 0),
+                        'line_total' => (float) ($it->line_total ?? 0),
+                    ];
+                })->values(),
+            ],
+        ]);
+    }
+
     public function data(Request $request): JsonResponse
     {
         $validated = $request->validate([

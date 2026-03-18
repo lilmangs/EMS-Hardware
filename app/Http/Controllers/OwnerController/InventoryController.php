@@ -69,6 +69,10 @@ class InventoryController extends Controller
             return collect($branches)->map(function (string $bk) use ($p) {
                 $ps = $p->stocks->firstWhere('branch_key', $bk);
 
+                if ($ps === null && $p->stocks->count() > 0) {
+                    return null;
+                }
+
                 $baseStock = $ps?->stock;
                 if ($baseStock === null) {
                     $baseStock = count($p->stocks) > 0 ? 0 : (int) ($p->stock ?? 0);
@@ -91,7 +95,7 @@ class InventoryController extends Controller
                     'max_stock' => $ps?->max_stock ?? 0,
                     'updated_at' => $ps?->updated_at,
                 ];
-            });
+            })->filter();
         })->values();
 
         return response()->json([

@@ -1,6 +1,6 @@
 import { Head, usePage } from '@inertiajs/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { RefreshCcw, Store, Package, Truck, CheckCircle2, MapPin, Hash, Clock, Boxes, PhilippinePeso } from 'lucide-react';
+import { RefreshCcw, Store, Package, Truck, CheckCircle2, MapPin, Hash, Clock, Boxes, PhilippinePeso, MoreHorizontal } from 'lucide-react';
 import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
 import { useBranchFilter } from '@/hooks/use-branch-filter';
@@ -10,6 +10,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
     Dialog,
     DialogContent,
@@ -422,6 +428,7 @@ export default function DeliveryMonitoring() {
                                                 <TableHead className="text-right">Items</TableHead>
                                                 <TableHead className="text-right">Total</TableHead>
                                                 <TableHead>Started</TableHead>
+                                                <TableHead className="text-right w-12">Action</TableHead>
                                             </TableRow>
                                         </TableHeader>
                                         <TableBody>
@@ -448,12 +455,35 @@ export default function DeliveryMonitoring() {
                                                     <TableCell className="text-right">{d.items}</TableCell>
                                                     <TableCell className="text-right">{peso(d.total)}</TableCell>
                                                     <TableCell className="text-muted-foreground">{formatReadableDateTime(d.started_at)}</TableCell>
+                                                    <TableCell className="text-right">
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger asChild>
+                                                                <button
+                                                                    type="button"
+                                                                    className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                                                                    onClick={(e) => e.stopPropagation()}
+                                                                >
+                                                                    <MoreHorizontal className="h-4 w-4" />
+                                                                </button>
+                                                            </DropdownMenuTrigger>
+                                                            <DropdownMenuContent align="end" className="w-44">
+                                                                <DropdownMenuItem
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setSelectedDelivery(d);
+                                                                    }}
+                                                                >
+                                                                    View Details
+                                                                </DropdownMenuItem>
+                                                            </DropdownMenuContent>
+                                                        </DropdownMenu>
+                                                    </TableCell>
                                                 </TableRow>
                                             ))}
 
                                             {!isLoading && deliveriesFiltered.length === 0 && (
                                                 <TableRow>
-                                                    <TableCell colSpan={9} className="py-8 text-center text-sm text-muted-foreground">
+                                                    <TableCell colSpan={10} className="py-8 text-center text-sm text-muted-foreground">
                                                         No deliveries found.
                                                     </TableCell>
                                                 </TableRow>
@@ -461,7 +491,7 @@ export default function DeliveryMonitoring() {
 
                                             {isLoading && (
                                                 <TableRow>
-                                                    <TableCell colSpan={9} className="py-8 text-center text-sm text-muted-foreground">
+                                                    <TableCell colSpan={10} className="py-8 text-center text-sm text-muted-foreground">
                                                         Loading…
                                                     </TableCell>
                                                 </TableRow>
