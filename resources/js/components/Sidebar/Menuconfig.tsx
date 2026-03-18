@@ -41,7 +41,7 @@ export const sidebarMenus: Record<string, MenuItem[]> = {
     ],
 
     cashier: [
-        { label: 'Dashboard', href: '/dashboard', icon: LayoutGrid },
+        { label: 'Dashboard', href: '/dashboard/cashier', icon: LayoutGrid },
         { label: 'Checkout', href: '/Checkout', icon: ArrowRightLeft },
         { label: 'Transaction', href: '/Transaction', icon: FileText },
         { label: 'Products', href: '/Products', icon: PackageSearch },

@@ -1,27 +1,29 @@
-import { Head } from '@inertiajs/react';
+import { Head, router, usePage } from '@inertiajs/react';
 import { 
     AlertTriangle, 
-    Box, 
-    PhilippinePeso, 
-    ShoppingCart, 
     DollarSign,
-    TrendingUp,
-    TrendingDown,
     ArrowUpRight,
     ArrowDownRight,
     Package,
-    Users,
     Clock,
     Target
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+    Bar,
+    BarChart,
+    CartesianGrid,
+    ResponsiveContainer,
+    Tooltip,
+    XAxis,
+    YAxis,
+} from 'recharts';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -31,44 +33,59 @@ const breadcrumbs: BreadcrumbItem[] = [
 ];
 
 export default function Dashboard() {
-    const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month'>('today');
+    const { props } = usePage<{
+        branch_key: string | null;
+        range: 'today' | 'week' | 'month';
+        stats: {
+            revenue: number;
+            orders: number;
+            avg_order: number;
+            growth: number;
+            items_sold: number;
+            customers_served: number;
+            inventory: {
+                total_rows: number;
+                low_stock: number;
+                out_of_stock: number;
+                categories: number;
+            };
+        };
+        sales_by_hour: {
+            labels: string[];
+            values: number[];
+            max: number;
+        };
+        top_products: Array<{ name: string; qty: number; revenue: number }>;
+        low_stock_items: Array<{ product_id: number; sku: string | null; name: string | null; stock: number; reorder_level: number }>;
+    }>();
 
-    // Enhanced data for cashier dashboard
-    const dashboardData = useMemo(() => ({
-        todaySales: { 
-            total: 1923.84, 
-            growth: 8.2,
-            orders: 15,
-            avgOrder: 128.26
-        },
-        inventory: {
-            total: 342,
-            lowStock: 4,
-            outOfStock: 1,
-            categories: 6
-        },
-        performance: {
-            itemsSold: 74,
-            customersServed: 15,
-            avgTransactionTime: 3.5, // minutes
-            efficiency: 92
-        },
-        shift: {
-            startTime: '8:00 AM',
-            endTime: '5:00 PM',
-            currentProgress: 65,
-            remainingCustomers: 25
-        }
-    }), []);
+    const [timeRange, setTimeRange] = useState<'today' | 'week' | 'month'>(props.range ?? 'today');
 
-    const getSalesGrowth = () => {
-        const growth = dashboardData.todaySales.growth;
+    const salesGrowth = useMemo(() => {
+        const growth = Number(props.stats?.growth) || 0;
         return {
             value: growth,
             isPositive: growth > 0,
-            text: `${growth > 0 ? '+' : ''}${growth}% from yesterday`
+            text: `${growth > 0 ? '+' : ''}${growth}% from previous`,
         };
-    };
+    }, [props.stats?.growth]);
+
+    const onTimeRangeChange = useCallback(
+        (value: string) => {
+            const next = value as typeof timeRange;
+            setTimeRange(next);
+            router.get(
+                '/dashboard/cashier',
+                { range: next },
+                {
+                    preserveState: true,
+                    replace: true,
+                    only: ['branch_key', 'range', 'stats', 'sales_by_hour', 'top_products', 'low_stock_items'],
+                },
+            );
+        },
+        [timeRange],
+    );
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -81,14 +98,20 @@ export default function Dashboard() {
                         <p className="text-muted-foreground">Manage your transactions and track your performance</p>
                     </div>
                     <div className="flex items-center gap-3">
-                        <Tabs value={timeRange} onValueChange={(value) => setTimeRange(value as typeof timeRange)}>
+                        <Tabs value={timeRange} onValueChange={onTimeRangeChange}>
                             <TabsList>
                                 <TabsTrigger value="today">Today</TabsTrigger>
                                 <TabsTrigger value="week">This Week</TabsTrigger>
                                 <TabsTrigger value="month">This Month</TabsTrigger>
                             </TabsList>
                         </Tabs>
-                        <Button className="gap-2">
+                        <Button
+                            className="gap-2"
+                            type="button"
+                            onClick={() => {
+                                router.visit('/Checkout');
+                            }}
+                        >
                             <Target className="h-4 w-4" />
                             New Transaction
                         </Button>
@@ -103,23 +126,23 @@ export default function Dashboard() {
                             <DollarSign className="h-4 w-4 text-muted-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">₱{dashboardData.todaySales.total.toLocaleString()}</div>
+                            <div className="text-2xl font-bold">₱{Number(props.stats?.revenue || 0).toLocaleString()}</div>
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                <span>{dashboardData.todaySales.orders} orders</span>
+                                <span>{Number(props.stats?.orders || 0)} orders</span>
                                 <span>•</span>
                                 <div className="flex items-center gap-1">
-                                    {getSalesGrowth().isPositive ? (
+                                    {salesGrowth.isPositive ? (
                                         <ArrowUpRight className="h-3 w-3 text-green-600" />
                                     ) : (
                                         <ArrowDownRight className="h-3 w-3 text-red-600" />
                                     )}
-                                    <span className={getSalesGrowth().isPositive ? "text-green-600" : "text-red-600"}>
-                                        {getSalesGrowth().text}
+                                    <span className={salesGrowth.isPositive ? "text-green-600" : "text-red-600"}>
+                                        {salesGrowth.text}
                                     </span>
                                 </div>
                             </div>
                             <div className="mt-2 text-xs text-muted-foreground">
-                                Avg: ₱{dashboardData.todaySales.avgOrder.toLocaleString()}/order
+                                Avg: ₱{Number(props.stats?.avg_order || 0).toLocaleString()}/order
                             </div>
                         </CardContent>
                     </Card>
@@ -130,20 +153,20 @@ export default function Dashboard() {
                             <Package className="h-4 w-4 text-muted-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">{dashboardData.performance.itemsSold}</div>
+                            <div className="text-2xl font-bold">{Number(props.stats?.items_sold || 0)}</div>
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                <span>{dashboardData.performance.customersServed} customers</span>
+                                <span>{Number(props.stats?.customers_served || 0)} customers</span>
                                 <span>•</span>
-                                <span>{dashboardData.inventory.categories} categories</span>
+                                <span>{Number(props.stats?.inventory?.categories || 0)} categories</span>
                             </div>
                             <div className="mt-2 space-y-1">
                                 <div className="flex items-center justify-between text-xs">
                                     <span className="text-orange-600">Low Stock</span>
-                                    <span className="font-medium">{dashboardData.inventory.lowStock}</span>
+                                    <span className="font-medium">{Number(props.stats?.inventory?.low_stock || 0)}</span>
                                 </div>
                                 <div className="flex items-center justify-between text-xs">
                                     <span className="text-red-600">Out of Stock</span>
-                                    <span className="font-medium">{dashboardData.inventory.outOfStock}</span>
+                                    <span className="font-medium">{Number(props.stats?.inventory?.out_of_stock || 0)}</span>
                                 </div>
                             </div>
                         </CardContent>
@@ -151,42 +174,30 @@ export default function Dashboard() {
 
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                            <CardTitle className="text-sm font-medium">Performance</CardTitle>
+                            <CardTitle className="text-sm font-medium">Average Order</CardTitle>
                             <Target className="h-4 w-4 text-muted-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">{dashboardData.performance.efficiency}%</div>
+                            <div className="text-2xl font-bold">₱{Number(props.stats?.avg_order || 0).toLocaleString()}</div>
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                <span>Efficiency score</span>
+                                <span>Per transaction</span>
                                 <span>•</span>
-                                <span>{dashboardData.performance.avgTransactionTime} min avg</span>
-                            </div>
-                            <div className="mt-2">
-                                <Progress value={dashboardData.performance.efficiency} className="h-2" />
-                                <div className="mt-1 text-xs text-muted-foreground">
-                                    Above target performance
-                                </div>
+                                <span>{salesGrowth.text}</span>
                             </div>
                         </CardContent>
                     </Card>
 
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                            <CardTitle className="text-sm font-medium">Shift Progress</CardTitle>
+                            <CardTitle className="text-sm font-medium">Customers Served</CardTitle>
                             <Clock className="h-4 w-4 text-muted-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">{dashboardData.shift.remainingCustomers}</div>
+                            <div className="text-2xl font-bold">{Number(props.stats?.customers_served || 0)}</div>
                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                <span>Customers remaining</span>
+                                <span>{Number(props.stats?.orders || 0)} transactions</span>
                                 <span>•</span>
-                                <span>{dashboardData.shift.startTime} - {dashboardData.shift.endTime}</span>
-                            </div>
-                            <div className="mt-2">
-                                <Progress value={dashboardData.shift.currentProgress} className="h-2" />
-                                <div className="mt-1 text-xs text-muted-foreground">
-                                    {dashboardData.shift.currentProgress}% complete
-                                </div>
+                                <span>{timeRange}</span>
                             </div>
                         </CardContent>
                     </Card>
@@ -200,7 +211,7 @@ export default function Dashboard() {
                             <CardDescription>Transaction volume throughout the day</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <SalesByHourChart />
+                            <SalesByHourBarChart labels={props.sales_by_hour?.labels ?? []} values={props.sales_by_hour?.values ?? []} />
                         </CardContent>
                     </Card>
 
@@ -212,18 +223,18 @@ export default function Dashboard() {
                             </CardHeader>
                             <CardContent>
                                 <div className="space-y-4">
-                                    {["Faucet Kitchen Chrome", "Door Handle Set", "LED Bulb Pack"].map((product, index) => (
-                                        <div key={index} className="flex items-center justify-between">
+                                    {(props.top_products ?? []).map((p) => (
+                                        <div key={p.name} className="flex items-center justify-between">
                                             <div className="flex items-center gap-3">
                                                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-100">
                                                     <Package className="h-4 w-4 text-orange-600" />
                                                 </div>
                                                 <div>
-                                                    <div className="text-sm font-medium">{product}</div>
-                                                    <div className="text-xs text-muted-foreground">12 sold</div>
+                                                    <div className="text-sm font-medium">{p.name}</div>
+                                                    <div className="text-xs text-muted-foreground">{p.qty} sold</div>
                                                 </div>
                                             </div>
-                                            <Badge variant="secondary">₱2,450</Badge>
+                                            <Badge variant="secondary">₱{Number(p.revenue || 0).toLocaleString()}</Badge>
                                         </div>
                                     ))}
                                 </div>
@@ -237,15 +248,15 @@ export default function Dashboard() {
                             </CardHeader>
                             <CardContent>
                                 <div className="space-y-4">
-                                    {["Hammer 16oz", "Screwdriver Set", "Measuring Tape"].map((item, index) => (
-                                        <div key={index} className="flex items-center justify-between">
+                                    {(props.low_stock_items ?? []).map((it) => (
+                                        <div key={it.product_id} className="flex items-center justify-between">
                                             <div className="flex items-center gap-3">
                                                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-100">
                                                     <AlertTriangle className="h-4 w-4 text-red-600" />
                                                 </div>
                                                 <div>
-                                                    <div className="text-sm font-medium">{item}</div>
-                                                    <div className="text-xs text-muted-foreground">Only 3 left</div>
+                                                    <div className="text-sm font-medium">{it.name ?? '-'}</div>
+                                                    <div className="text-xs text-muted-foreground">Only {Number(it.stock || 0)} left</div>
                                                 </div>
                                             </div>
                                             <Button variant="outline" size="sm">
@@ -287,51 +298,53 @@ function StatCard({
     );
 }
 
-function SalesByHourChart() {
-    const hours = ['9AM', '11AM', '12PM', '1PM', '2PM', '3PM', '4PM', '5PM', '6PM', '7PM', '8PM'];
-    const values = [80, 380, 540, 320, 620, 0, 540, 580, 0, 0, 0];
-    const max = 600;
+function SalesByHourChart({
+    labels,
+    values,
+    max,
+}: {
+    labels: string[];
+    values: number[];
+    max: number;
+}) {
+    return null;
+}
+
+function SalesByHourBarChart({
+    labels,
+    values,
+}: {
+    labels: string[];
+    values: number[];
+}) {
+    const data = useMemo(() => {
+        const safeLabels = Array.isArray(labels) ? labels : [];
+        const safeValues = Array.isArray(values) ? values : [];
+        const len = Math.min(safeLabels.length, safeValues.length);
+
+        return Array.from({ length: len }).map((_, idx) => ({
+            hour: safeLabels[idx],
+            revenue: Number(safeValues[idx] ?? 0) || 0,
+        }));
+    }, [labels, values]);
 
     return (
-        <div className="w-full">
-            <div className="grid grid-cols-[40px_1fr] gap-3">
-                <div className="flex flex-col justify-between text-xs font-medium text-muted-foreground">
-                    <span>{max}</span>
-                    <span>450</span>
-                    <span>300</span>
-                    <span>150</span>
-                    <span>0</span>
-                </div>
-
-                <div className="relative h-56 rounded-lg bg-muted/30 p-3">
-                    <div className="absolute inset-3 grid grid-rows-4 gap-0">
-                        <div className="border-b border-border/50" />
-                        <div className="border-b border-border/50" />
-                        <div className="border-b border-border/50" />
-                        <div className="border-b border-border/50" />
-                    </div>
-
-                    <div className="relative flex h-full items-end gap-2">
-                        {values.map((v, idx) => (
-                            <div key={hours[idx]} className="flex-1">
-                                <div
-                                    className="mx-auto w-full rounded-md bg-gradient-to-t from-orange-500 to-orange-400 hover:from-orange-600 hover:to-orange-500 transition-colors"
-                                    style={{ height: `${(v / max) * 100}%` }}
-                                    title={`${hours[idx]}: ₱${v}`}
-                                />
-                            </div>
-                        ))}
-                    </div>
-
-                    <div className="absolute bottom-0 left-0 right-0 flex justify-between px-3 pb-1">
-                        {hours.map((hour, idx) => (
-                            <div key={idx} className="flex-1 text-center">
-                                <span className="text-xs text-muted-foreground">{hour}</span>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            </div>
+        <div className="h-72 w-full min-w-0">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                <BarChart data={data} margin={{ top: 10, right: 18, left: 0, bottom: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="hour" tick={{ fontSize: 12 }} interval="preserveStartEnd" />
+                    <YAxis tick={{ fontSize: 12 }} width={60} />
+                    <Tooltip
+                        formatter={(value: any) => {
+                            const n = Number(value) || 0;
+                            return [`₱${n.toLocaleString()}`, 'Revenue'];
+                        }}
+                    />
+                    <Bar dataKey="revenue" fill="#ea580c" radius={[6, 6, 0, 0]} />
+                </BarChart>
+            </ResponsiveContainer>
+            {data.length === 0 && <div className="mt-3 text-sm text-muted-foreground">No hourly sales data available.</div>}
         </div>
     );
 }

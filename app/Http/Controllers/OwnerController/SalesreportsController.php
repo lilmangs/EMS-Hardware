@@ -38,7 +38,7 @@ class SalesreportsController extends Controller
         };
         $to = $now->copy()->endOfDay();
 
-        $query = PosSale::query()->with(['items:id,pos_sale_id,qty']);
+        $query = PosSale::query()->with(['items:id,pos_sale_id,qty', 'delivery:id,pos_sale_id,delivery_fee']);
 
         if ($branchKey !== 'all') {
             $query->where('branch_key', $branchKey);
@@ -116,6 +116,7 @@ class SalesreportsController extends Controller
                         'ref' => $s->ref,
                         'branch_key' => $s->branch_key,
                         'items' => (int) $s->items->sum('qty'),
+                        'delivery_fee' => $s->delivery ? (float) $s->delivery->delivery_fee : 0.0,
                         'total' => (float) $s->total,
                         'subtotal' => (float) $s->subtotal,
                         'created_at' => $s->created_at?->toISOString(),

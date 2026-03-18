@@ -30,6 +30,7 @@ export default function Dashboard() {
             price: number | string | null;
             image_path: string | null;
             stock: number;
+            reorder_level?: number;
         }>;
         recent_restocks: Array<{
             id: number;
@@ -72,7 +73,7 @@ export default function Dashboard() {
                 <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
                     <div>
                         <h1 className="text-3xl font-bold">Staff Dashboard</h1>
-                        <p className="text-muted-foreground">Quick access to daily inventory and product tasks</p>
+                        <p className="text-muted-foreground">Quick access to inventory tasks</p>
                     </div>
                     <div className="flex flex-wrap gap-2">
                         <Button asChild className="gap-2">
@@ -90,27 +91,15 @@ export default function Dashboard() {
                     </div>
                 </div>
 
-                <Card>
-                    <CardHeader className="flex flex-row items-start justify-between gap-3">
-                        <div>
-                            <CardTitle>Assigned Branch</CardTitle>
-                            <CardDescription>Your inventory actions are limited to your assigned branch.</CardDescription>
-                        </div>
-                        <Badge variant={branchKey ? 'secondary' : 'destructive'} className="h-6">
-                            {branchLabel}
-                        </Badge>
-                    </CardHeader>
-                </Card>
-
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                            <CardTitle className="text-sm font-medium">Products (Branch)</CardTitle>
+                            <CardTitle className="text-sm font-medium">Products</CardTitle>
                             <Boxes className="h-4 w-4 text-muted-foreground" />
                         </CardHeader>
                         <CardContent>
                             <div className="text-2xl font-bold">{stats?.total_products ?? 0}</div>
-                            <p className="text-xs text-muted-foreground">Products tracked in {branchLabel}</p>
+                            <p className="text-xs text-muted-foreground">Tracked in your branch</p>
                         </CardContent>
                     </Card>
 
@@ -121,7 +110,7 @@ export default function Dashboard() {
                         </CardHeader>
                         <CardContent>
                             <div className="text-2xl font-bold">{(stats?.total_units ?? 0).toLocaleString()}</div>
-                            <p className="text-xs text-muted-foreground">All units in {branchLabel}</p>
+                            <p className="text-xs text-muted-foreground">Current on-hand units</p>
                         </CardContent>
                     </Card>
 
@@ -132,7 +121,7 @@ export default function Dashboard() {
                         </CardHeader>
                         <CardContent>
                             <div className="text-2xl font-bold">{stats?.low_stock_count ?? 0}</div>
-                            <p className="text-xs text-muted-foreground">Needs restock soon</p>
+                            <p className="text-xs text-muted-foreground">Below threshold</p>
                         </CardContent>
                     </Card>
 
@@ -143,108 +132,105 @@ export default function Dashboard() {
                         </CardHeader>
                         <CardContent>
                             <div className="text-2xl font-bold">{stats?.out_of_stock_count ?? 0}</div>
-                            <p className="text-xs text-muted-foreground">Restock required</p>
+                            <p className="text-xs text-muted-foreground">Immediate action</p>
                         </CardContent>
                     </Card>
                 </div>
 
-                <div className="grid gap-6 lg:grid-cols-2">
-                    <Card>
-                        <CardHeader className="flex flex-row items-start justify-between gap-3">
-                            <div>
-                                <CardTitle>Low / Out of Stock</CardTitle>
-                                <CardDescription>Items in {branchLabel} that need attention</CardDescription>
-                            </div>
-                            <Button asChild variant="outline" className="shrink-0">
-                                <Link href="/inventory">Open Inventory</Link>
-                            </Button>
-                        </CardHeader>
-                        <CardContent>
-                            {(!props.low_stock_items || props.low_stock_items.length === 0) ? (
-                                <div className="text-sm text-muted-foreground">No low stock items found.</div>
-                            ) : (
-                                <div className="space-y-2">
-                                    {props.low_stock_items.map((it) => (
-                                        <div key={it.product_id} className="flex items-center justify-between gap-3 rounded-lg border p-3">
-                                            <div className="min-w-0">
-                                                <div className="font-medium truncate">{it.name ?? 'Unnamed product'}</div>
-                                                <div className="text-xs text-muted-foreground font-mono truncate">{it.sku ?? `#${it.product_id}`}</div>
-                                            </div>
-                                            <Badge variant={it.stock === 0 ? 'destructive' : 'secondary'}>
-                                                {it.stock === 0 ? 'Out' : `${it.stock} left`}
-                                            </Badge>
+                <Card>
+                    <CardHeader className="flex flex-row items-start justify-between gap-3">
+                        <div>
+                            <CardTitle>Low / Out of Stock</CardTitle>
+                            <CardDescription>Items that need attention</CardDescription>
+                        </div>
+                        <Button asChild variant="outline" className="shrink-0">
+                            <Link href="/inventory">Open Inventory</Link>
+                        </Button>
+                    </CardHeader>
+                    <CardContent>
+                        {(!props.low_stock_items || props.low_stock_items.length === 0) ? (
+                            <div className="text-sm text-muted-foreground">No low stock items found.</div>
+                        ) : (
+                            <div className="space-y-2">
+                                {props.low_stock_items.map((it) => (
+                                    <div key={it.product_id} className="flex items-center justify-between gap-3 rounded-lg border p-3">
+                                        <div className="min-w-0">
+                                            <div className="font-medium truncate">{it.name ?? 'Unnamed product'}</div>
+                                            <div className="text-xs text-muted-foreground font-mono truncate">{it.sku ?? `#${it.product_id}`}</div>
                                         </div>
-                                    ))}
-                                </div>
-                            )}
-                        </CardContent>
-                    </Card>
+                                        <Badge variant={it.stock === 0 ? 'destructive' : 'secondary'}>
+                                            {it.stock === 0
+                                                ? 'Out'
+                                                : `Low: ${it.stock} (threshold ${Number(it.reorder_level ?? 0)})`}
+                                        </Badge>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
 
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Recent Activity</CardTitle>
-                            <CardDescription>Latest restocks and stock adjustments for {branchLabel}</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="space-y-4">
-                                <div>
-                                    <div className="text-sm font-medium">Restocks</div>
-                                    <div className="mt-2 space-y-2">
-                                        {(!props.recent_restocks || props.recent_restocks.length === 0) ? (
-                                            <div className="text-sm text-muted-foreground">No restocks yet.</div>
-                                        ) : (
-                                            props.recent_restocks.map((r) => (
-                                                <div key={r.id} className="rounded-lg border p-3">
-                                                    <div className="flex items-center justify-between gap-3">
-                                                        <div className="min-w-0">
-                                                            <div className="font-medium truncate">{r.product?.name ?? 'Product'}</div>
-                                                            <div className="text-xs text-muted-foreground font-mono truncate">{r.product?.sku ?? '-'}</div>
-                                                        </div>
-                                                        <Badge variant="secondary">+{r.qty}</Badge>
-                                                    </div>
-                                                    <div className="mt-2 text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Recent Activity</CardTitle>
+                        <CardDescription>Latest inventory updates in {branchLabel}</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="grid gap-4 lg:grid-cols-2">
+                            <div className="space-y-2">
+                                <div className="text-sm font-medium">Restocks</div>
+                                {(!props.recent_restocks || props.recent_restocks.length === 0) ? (
+                                    <div className="text-sm text-muted-foreground">No restocks yet.</div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {props.recent_restocks.map((r) => (
+                                            <div key={r.id} className="flex items-center justify-between gap-3 rounded-lg border p-3">
+                                                <div className="min-w-0">
+                                                    <div className="font-medium truncate">{r.product?.name ?? 'Product'}</div>
+                                                    <div className="text-xs text-muted-foreground flex flex-wrap gap-x-2 gap-y-1">
+                                                        <span className="font-mono truncate">{r.product?.sku ?? '-'}</span>
                                                         <span>{formatDateTime(r.created_at)}</span>
-                                                        {r.performed_by && <span>by {r.performed_by}</span>}
-                                                        {r.note && <span className="truncate">{r.note}</span>}
+                                                        {r.performed_by && <span className="truncate">by {r.performed_by}</span>}
                                                     </div>
                                                 </div>
-                                            ))
-                                        )}
+                                                <Badge variant="secondary" className="shrink-0">+{r.qty}</Badge>
+                                            </div>
+                                        ))}
                                     </div>
-                                </div>
+                                )}
+                            </div>
 
-                                <div>
-                                    <div className="text-sm font-medium">Adjustments</div>
-                                    <div className="mt-2 space-y-2">
-                                        {(!props.recent_adjustments || props.recent_adjustments.length === 0) ? (
-                                            <div className="text-sm text-muted-foreground">No adjustments yet.</div>
-                                        ) : (
-                                            props.recent_adjustments.map((a) => (
-                                                <div key={a.id} className="rounded-lg border p-3">
-                                                    <div className="flex items-center justify-between gap-3">
-                                                        <div className="min-w-0">
-                                                            <div className="font-medium truncate">{a.product?.name ?? 'Product'}</div>
-                                                            <div className="text-xs text-muted-foreground font-mono truncate">{a.product?.sku ?? '-'}</div>
-                                                        </div>
-                                                        <Badge variant={a.qty_change < 0 ? 'destructive' : 'secondary'}>
-                                                            {a.qty_change > 0 ? `+${a.qty_change}` : String(a.qty_change)}
-                                                        </Badge>
-                                                    </div>
-                                                    <div className="mt-2 text-xs text-muted-foreground flex flex-wrap gap-x-3 gap-y-1">
+                            <div className="space-y-2">
+                                <div className="text-sm font-medium">Adjustments</div>
+                                {(!props.recent_adjustments || props.recent_adjustments.length === 0) ? (
+                                    <div className="text-sm text-muted-foreground">No adjustments yet.</div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        {props.recent_adjustments.map((a) => (
+                                            <div key={a.id} className="flex items-center justify-between gap-3 rounded-lg border p-3">
+                                                <div className="min-w-0">
+                                                    <div className="font-medium truncate">{a.product?.name ?? 'Product'}</div>
+                                                    <div className="text-xs text-muted-foreground flex flex-wrap gap-x-2 gap-y-1">
+                                                        <span className="font-mono truncate">{a.product?.sku ?? '-'}</span>
                                                         <span className="uppercase">{a.type}</span>
                                                         <span>{formatDateTime(a.created_at)}</span>
-                                                        {a.performed_by && <span>by {a.performed_by}</span>}
-                                                        {a.note && <span className="truncate">{a.note}</span>}
+                                                        {a.performed_by && <span className="truncate">by {a.performed_by}</span>}
                                                     </div>
                                                 </div>
-                                            ))
-                                        )}
+                                                <Badge
+                                                    variant={a.qty_change < 0 ? 'destructive' : 'secondary'}
+                                                    className="shrink-0"
+                                                >
+                                                    {a.qty_change > 0 ? `+${a.qty_change}` : String(a.qty_change)}
+                                                </Badge>
+                                            </div>
+                                        ))}
                                     </div>
-                                </div>
+                                )}
                             </div>
-                        </CardContent>
-                    </Card>
-                </div>
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
         </AppLayout>
     );

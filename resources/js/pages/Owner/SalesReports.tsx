@@ -9,8 +9,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Button } from '@/components/ui/button';
 import { useBranchFilter } from '@/hooks/use-branch-filter';
 import {
+    Area,
+    AreaChart,
     Bar,
-    BarChart,
     CartesianGrid,
     ResponsiveContainer,
     Tooltip,
@@ -45,7 +46,16 @@ export default function SalesReports() {
         trend: Array<{ label: string; revenue: number }>;
         summary: { revenue: number; subtotal: number; orders: number; items: number; avg_order_value: number };
         transactions: {
-            data: Array<{ id: number; ref: string; branch_key: 'lagonglong' | 'balingasag'; items: number; total: number; subtotal: number; created_at: string | null }>;
+            data: Array<{
+                id: number;
+                ref: string;
+                branch_key: 'lagonglong' | 'balingasag';
+                items: number;
+                delivery_fee?: number;
+                total: number;
+                subtotal: number;
+                created_at: string | null;
+            }>;
             meta: { current_page: number; per_page: number; last_page: number; total: number };
         };
     };
@@ -119,6 +129,11 @@ export default function SalesReports() {
     const transactionsMeta = data?.transactions?.meta ?? null;
     const trend = data?.trend ?? [];
 
+    const peso = useCallback((n: unknown) => {
+        const num = Number(n) || 0;
+        return `₱${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    }, []);
+
     const formatDateTime = useCallback((iso: string | null) => {
         if (!iso) return '—';
         const d = new Date(iso);
@@ -153,6 +168,137 @@ export default function SalesReports() {
         return k === 'lagonglong' ? 'Lagonglong' : 'Balingasag';
     }, []);
 
+    const printReport = useCallback(async () => {
+        try {
+            const stamp = new Date().toLocaleString();
+
+            const allRows: SalesReportResponse['transactions']['data'] = [];
+            let nextPage = 1;
+            let lastPage = 1;
+            const exportPerPage = 200;
+
+            while (nextPage <= lastPage) {
+                const params = new URLSearchParams();
+                params.set('branch_key', effectiveBranch);
+                params.set('range', range);
+                params.set('page', String(nextPage));
+                params.set('per_page', String(exportPerPage));
+
+                const res = await fetch(`/owner/sales-reports/data?${params.toString()}`, {
+                    headers: { Accept: 'application/json' },
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                });
+
+                const json = (await res.json().catch(() => null)) as SalesReportResponse | null;
+                if (!res.ok || !json) throw new Error((json as any)?.message || 'Failed to export sales report');
+
+                allRows.push(...(json.transactions?.data ?? []));
+                lastPage = json.transactions?.meta?.last_page ?? 1;
+                nextPage += 1;
+
+                if (lastPage > 50) {
+                    throw new Error('Too many pages to export at once. Please narrow the time range.');
+                }
+            }
+
+            const rows = allRows;
+            const totals = rows.reduce(
+                (acc, t) => {
+                    acc.items += Number(t.items) || 0;
+                    acc.subtotal += Number(t.subtotal) || 0;
+                    acc.deliveryFee += Number(t.delivery_fee) || 0;
+                    acc.total += Number(t.total) || 0;
+                    return acc;
+                },
+                { items: 0, subtotal: 0, deliveryFee: 0, total: 0 },
+            );
+
+            const tableRows = rows
+                .map((t) => {
+                    const safe = (v: unknown) => String(v ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    const deliveryFee = Number(t.delivery_fee) || 0;
+                    return `
+                        <tr>
+                            <td>${safe(t.ref)}</td>
+                            <td>${safe(branchLabel(t.branch_key))}</td>
+                            <td>${safe(formatDateTime(t.created_at))}</td>
+                            <td style="text-align:right">${Number(t.items) || 0}</td>
+                            <td style="text-align:right">${peso(t.subtotal)}</td>
+                            <td style="text-align:right">${deliveryFee > 0 ? peso(deliveryFee) : '—'}</td>
+                            <td style="text-align:right">${peso(t.total)}</td>
+                        </tr>
+                    `;
+                })
+                .join('');
+
+            const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sales Report</title>
+  <style>
+    *{box-sizing:border-box;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;}
+    body{margin:0;padding:16px;color:#111;background:#fff;}
+    .wrap{max-width:1100px;margin:0 auto;}
+    .title{font-size:16px;font-weight:800;margin:0;}
+    .meta{margin:6px 0 14px;font-size:12px;color:#555;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+    table{width:100%;border-collapse:collapse;font-size:12px;}
+    th,td{padding:8px 6px;border-bottom:1px solid #e5e7eb;vertical-align:top;}
+    th{text-align:left;background:#f3f4f6;font-weight:700;}
+    .totals-row{font-weight:700;background:#f9fafb;border-top:2px solid #e5e7eb;}
+    @media print{body{padding:0}.wrap{max-width:none}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1 class="title">Sales Report</h1>
+    <div class="meta">
+      <div>Generated: ${String(stamp).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+      <div>Branch: ${effectiveBranch === 'all' ? 'All' : branchLabel(effectiveBranch)}</div>
+      <div>Range: ${String(range).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Ref</th>
+          <th>Branch</th>
+          <th>Date</th>
+          <th style="text-align:right">Qty</th>
+          <th style="text-align:right">Subtotal</th>
+          <th style="text-align:right">Delivery Fee</th>
+          <th style="text-align:right">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${tableRows}
+      </tbody>
+      <tbody>
+        <tr class="totals-row">
+          <td colspan="3" style="font-weight:700;text-align:left;">TOTALS (${rows.length} transactions)</td>
+          <td style="text-align:right">${totals.items}</td>
+          <td style="text-align:right">${peso(totals.subtotal)}</td>
+          <td style="text-align:right">${totals.deliveryFee > 0 ? peso(totals.deliveryFee) : '—'}</td>
+          <td style="text-align:right">${peso(totals.total)}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <script>window.onload=function(){window.print();};</script>
+</body>
+</html>`;
+
+            const pw = window.open('', '_blank', 'width=1200,height=800');
+            if (!pw) return;
+            pw.document.open();
+            pw.document.write(html);
+            pw.document.close();
+        } catch (e: any) {
+            setError(e?.message ? String(e.message) : 'Export failed.');
+        }
+    }, [branchLabel, effectiveBranch, formatDateTime, peso, range]);
+
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Sales Reports" />
@@ -161,6 +307,22 @@ export default function SalesReports() {
                     <div>
                         <h1 className="text-3xl font-bold">Sales Reports</h1>
                         <p className="text-muted-foreground">Sales totals and recent transactions</p>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <Select value={range} onValueChange={(value: any) => setRange(value)}>
+                            <SelectTrigger className="w-[140px]">
+                                <SelectValue placeholder="Time Range" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="today">Today</SelectItem>
+                                <SelectItem value="week">This Week</SelectItem>
+                                <SelectItem value="month">This Month</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <Button type="button" variant="outline" onClick={printReport} disabled={isLoading}>
+                            Export PDF
+                        </Button>
                     </div>
                 </div>
 
@@ -222,21 +384,11 @@ export default function SalesReports() {
                             <CardTitle>Sales Trend</CardTitle>
                             <CardDescription>Revenue over the selected range.</CardDescription>
                         </div>
-                        <Select value={range} onValueChange={(value: any) => setRange(value)}>
-                            <SelectTrigger className="w-[140px]">
-                                <SelectValue placeholder="Time Range" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="today">Today</SelectItem>
-                                <SelectItem value="week">This Week</SelectItem>
-                                <SelectItem value="month">This Month</SelectItem>
-                            </SelectContent>
-                        </Select>
                     </CardHeader>
                     <CardContent>
                         <div className="h-72 w-full min-w-0">
                             <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-                                <BarChart data={trend} margin={{ top: 10, right: 18, left: 0, bottom: 10 }}>
+                                <AreaChart data={trend} margin={{ top: 10, right: 18, left: 0, bottom: 10 }}>
                                     <CartesianGrid strokeDasharray="3 3" />
                                     <XAxis
                                         dataKey="label"
@@ -244,16 +396,20 @@ export default function SalesReports() {
                                         interval="preserveStartEnd"
                                         tickFormatter={formatTrendTick}
                                     />
-                                    <YAxis tick={{ fontSize: 12 }} width={60} />
+                                    <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `₱${Number(v || 0).toLocaleString()}`} width={62} />
                                     <Tooltip
+                                        formatter={(value: any) => [`₱${Number(value || 0).toLocaleString()}`, 'Revenue']}
                                         labelFormatter={formatTrendTooltipLabel}
-                                        formatter={(value: any) => {
-                                            const n = Number(value) || 0;
-                                            return [`₱${n.toLocaleString()}`, 'Revenue'];
-                                        }}
                                     />
-                                    <Bar dataKey="revenue" fill="#ea580c" radius={[6, 6, 0, 0]} />
-                                </BarChart>
+                                    <Area
+                                        type="monotone"
+                                        dataKey="revenue"
+                                        stroke="#f97316"
+                                        fill="#fb923c"
+                                        fillOpacity={0.25}
+                                        strokeWidth={2}
+                                    />
+                                </AreaChart>
                             </ResponsiveContainer>
                         </div>
                         {!isLoading && trend.length === 0 && (
@@ -279,6 +435,7 @@ export default function SalesReports() {
                                         <TableHead>Branch</TableHead>
                                         <TableHead className="text-right">Items</TableHead>
                                         <TableHead className="text-right">Subtotal</TableHead>
+                                        <TableHead className="text-right">Delivery Fee</TableHead>
                                         <TableHead className="text-right">Total</TableHead>
                                         <TableHead className="pl-10 min-w-[180px]">Date</TableHead>
                                     </TableRow>
@@ -289,15 +446,18 @@ export default function SalesReports() {
                                             <TableCell className="font-medium">{t.ref}</TableCell>
                                             <TableCell>{branchLabel(t.branch_key)}</TableCell>
                                             <TableCell className="text-right tabular-nums">{t.items}</TableCell>
-                                            <TableCell className="text-right tabular-nums">₱{Number(t.subtotal || 0).toLocaleString()}</TableCell>
-                                            <TableCell className="text-right font-medium tabular-nums">₱{Number(t.total || 0).toLocaleString()}</TableCell>
+                                            <TableCell className="text-right tabular-nums">{peso(t.subtotal || 0)}</TableCell>
+                                            <TableCell className="text-right tabular-nums">
+                                                {Number(t.delivery_fee || 0) > 0 ? peso(t.delivery_fee || 0) : '—'}
+                                            </TableCell>
+                                            <TableCell className="text-right font-medium tabular-nums">{peso(t.total || 0)}</TableCell>
                                             <TableCell className="pl-10 min-w-[180px] text-muted-foreground">{formatDateTime(t.created_at)}</TableCell>
                                         </TableRow>
                                     ))}
 
                                     {!isLoading && !transactions.length && (
                                         <TableRow>
-                                            <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                                            <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
                                                 No transactions found.
                                             </TableCell>
                                         </TableRow>
@@ -305,7 +465,7 @@ export default function SalesReports() {
 
                                     {isLoading && (
                                         <TableRow>
-                                            <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
+                                            <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
                                                 Loading…
                                             </TableCell>
                                         </TableRow>

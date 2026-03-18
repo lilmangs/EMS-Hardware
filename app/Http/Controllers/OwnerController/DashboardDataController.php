@@ -241,7 +241,7 @@ class DashboardDataController extends Controller
             ->whereBetween('pos_sales.created_at', [$from, $to])
             ->when($branchKey !== 'all', fn ($q) => $q->where('pos_sales.branch_key', $branchKey))
             ->selectRaw("COALESCE(NULLIF(TRIM(products.category),''), 'Uncategorized') as category")
-            ->selectRaw('COALESCE(SUM(pos_sale_items.line_total),0) as revenue')
+            ->selectRaw('COALESCE(SUM(COALESCE(pos_sale_items.line_total, (pos_sale_items.qty * pos_sale_items.price))),0) as revenue')
             ->groupBy('category')
             ->orderByDesc('revenue')
             ->limit(5)

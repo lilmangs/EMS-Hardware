@@ -40,12 +40,10 @@ class DashboardController extends Controller
         $totalProducts = (clone $stocksQuery)->count();
         $totalUnits = (clone $stocksQuery)->sum('stock');
 
-        // Simple threshold for "low stock" until configurable levels are used.
-        $lowThreshold = 5;
-
         $lowStockCount = (clone $stocksQuery)
+            ->where('reorder_level', '>', 0)
             ->where('stock', '>', 0)
-            ->where('stock', '<=', $lowThreshold)
+            ->whereColumn('stock', '<=', 'reorder_level')
             ->count();
 
         $outOfStockCount = (clone $stocksQuery)
@@ -53,7 +51,14 @@ class DashboardController extends Controller
             ->count();
 
         $lowStockItems = (clone $stocksQuery)
-            ->where('stock', '<=', $lowThreshold)
+            ->where(function ($q) {
+                $q->where('stock', '<=', 0)
+                    ->orWhere(function ($q2) {
+                        $q2->where('reorder_level', '>', 0)
+                            ->where('stock', '>', 0)
+                            ->whereColumn('stock', '<=', 'reorder_level');
+                    });
+            })
             ->orderBy('stock')
             ->limit(10)
             ->get()
@@ -66,6 +71,7 @@ class DashboardController extends Controller
                     'price' => $ps->product?->price,
                     'image_path' => $ps->product?->image_path,
                     'stock' => $ps->stock,
+                    'reorder_level' => (int) ($ps->reorder_level ?? 0),
                 ];
             })
             ->values();

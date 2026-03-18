@@ -23,10 +23,12 @@ class StaffMonitoringController extends Controller
         $validated = $request->validate([
             'branch_key' => ['nullable', Rule::in(['all', 'lagonglong', 'balingasag'])],
             'range' => ['nullable', Rule::in(['today', 'yesterday', 'this_week', 'last_7_days'])],
+            'role' => ['nullable', Rule::in(['all', User::ROLE_CASHIER, User::ROLE_STAFF, User::ROLE_DELIVERY])],
         ]);
 
         $branchKey = $validated['branch_key'] ?? 'all';
         $range = $validated['range'] ?? 'today';
+        $role = $validated['role'] ?? User::ROLE_CASHIER;
 
         [$from, $to] = $this->resolveRange($range);
 
@@ -37,10 +39,15 @@ class StaffMonitoringController extends Controller
             $staffQuery->where('branch_key', $branchKey);
         }
 
-        $staff = $staffQuery
-            ->whereIn('role', [User::ROLE_STAFF, User::ROLE_CASHIER, User::ROLE_DELIVERY])
-            ->orderBy('name')
-            ->get();
+        $allowedRoles = [User::ROLE_STAFF, User::ROLE_CASHIER, User::ROLE_DELIVERY];
+
+        $staffQuery->whereIn('role', $allowedRoles);
+
+        if ($role !== 'all') {
+            $staffQuery->where('role', $role);
+        }
+
+        $staff = $staffQuery->orderBy('name')->get();
 
         $salesByUser = PosSale::query()
             ->whereBetween('created_at', [$from, $to])
@@ -75,6 +82,7 @@ class StaffMonitoringController extends Controller
             'filters' => [
                 'branch_key' => $branchKey,
                 'range' => $range,
+                'role' => $role,
                 'from' => $from->toDateTimeString(),
                 'to' => $to->toDateTimeString(),
             ],

@@ -25,6 +25,7 @@ const breadcrumbs: BreadcrumbItem[] = [
 ];
 
 type DateFilterKey = 'today' | 'yesterday' | 'this_week' | 'last_7_days';
+type RoleFilterValue = 'all' | 'cashier' | 'staff' | 'delivery';
 
 type StaffShiftRow = {
     id: number;
@@ -102,6 +103,7 @@ function formatReadableTime(hhmm: string): string {
 export default function StaffMonitoring() {
     const { branch: effectiveBranch } = useBranchFilter();
     const [dateFilter, setDateFilter] = useState<DateFilterKey>('today');
+    const [roleFilter, setRoleFilter] = useState<RoleFilterValue>('cashier');
     const [selectedRow, setSelectedRow] = useState<StaffShiftRow | null>(null);
     const [isViewOpen, setIsViewOpen] = useState(false);
 
@@ -119,6 +121,7 @@ export default function StaffMonitoring() {
                 const qs = new URLSearchParams({
                     branch_key: effectiveBranch ?? 'all',
                     range: dateFilter,
+                    role: roleFilter,
                 });
 
                 const res = await fetch(`/owner/staff-monitoring/data?${qs.toString()}`, {
@@ -148,7 +151,7 @@ export default function StaffMonitoring() {
         load();
 
         return () => controller.abort();
-    }, [effectiveBranch, dateFilter]);
+    }, [effectiveBranch, dateFilter, roleFilter]);
 
     const summary = useMemo(() => {
         const staffTotal = rows.length;
@@ -212,18 +215,33 @@ export default function StaffMonitoring() {
                 <CardHeader>
                     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <CardTitle>On-duty List</CardTitle>
-                        <div className="w-full md:w-56">
-                            <Select value={dateFilter} onValueChange={(v) => setDateFilter(v as DateFilterKey)}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Date range" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="today">Today</SelectItem>
-                                    <SelectItem value="yesterday">Yesterday</SelectItem>
-                                    <SelectItem value="this_week">This Week</SelectItem>
-                                    <SelectItem value="last_7_days">Last 7 Days</SelectItem>
-                                </SelectContent>
-                            </Select>
+                        <div className="flex w-full flex-col gap-2 md:w-auto md:flex-row md:items-center">
+                            <div className="w-full md:w-48">
+                                <Select value={roleFilter} onValueChange={(v) => setRoleFilter(v as RoleFilterValue)}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Role" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="cashier">Cashier</SelectItem>
+                                        <SelectItem value="staff">Staff</SelectItem>
+                                        <SelectItem value="delivery">Delivery Staff</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="w-full md:w-56">
+                                <Select value={dateFilter} onValueChange={(v) => setDateFilter(v as DateFilterKey)}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Date range" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="today">Today</SelectItem>
+                                        <SelectItem value="yesterday">Yesterday</SelectItem>
+                                        <SelectItem value="this_week">This Week</SelectItem>
+                                        <SelectItem value="last_7_days">Last 7 Days</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </div>
                     </div>
                 </CardHeader>

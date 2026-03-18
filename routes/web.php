@@ -21,6 +21,7 @@ use App\Http\Controllers\Staff\DashboardController as StaffDashboardController;
 use App\Http\Controllers\Staff\ArchiveController as StaffArchiveController;
 use App\Http\Controllers\Staff\ActivityLogController as StaffActivityLogController;
 use App\Http\Controllers\Delivery\CalendarController as DeliveryCalendarController;
+use App\Http\Controllers\CashierController\DashboardController as CashierDashboardController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
@@ -261,6 +262,10 @@ Route::post('/delivery/calendar/status', [DeliveryCalendarController::class, 'st
     ->middleware(['auth', 'verified', 'role:delivery'])
     ->name('delivery.calendar.status');
 
+Route::get('/dashboard/cashier', CashierDashboardController::class)
+    ->middleware(['auth', 'verified', 'role:cashier'])
+    ->name('cashier.dashboard');
+
 // Keep the general dashboard for backward compatibility
 Route::get('dashboard', function () {
     $user = request()->user();
@@ -268,7 +273,7 @@ Route::get('dashboard', function () {
     return match ($user?->role) {
         'owner' => Inertia::render('Owner/Dashboard'),
         'staff' => redirect()->route('staff.dashboard'),
-        'cashier' => Inertia::render('Cashier/Dashboard'),
+        'cashier' => redirect()->route('cashier.dashboard'),
         'delivery' => redirect()->route('delivery.calendar'),
         'superadmin' => Inertia::render('Admin/Superadmin'),
             default => redirect('/'),

@@ -4,6 +4,19 @@ import { Minus, Plus, Search, Trash2, Package, Camera, CameraOff, CheckCircle, A
 import { BrowserMultiFormatReader } from '@zxing/browser';
 import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import {
+    Dialog,
+    DialogClose,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -36,6 +49,7 @@ type Receipt = {
     items: Array<{ name: string; qty: number; price: number; lineTotal: number }>;
     subtotal: number;
     total: number;
+    delivery_fee?: number;
     received: number;
     change: number;
 };
@@ -48,6 +62,16 @@ const peso = (n: number | string) => {
 const productImageUrl = (path?: string | null) => {
     if (!path) return null;
     return `/storage/${path}`;
+};
+
+type DeliveryStaff = {
+    id: number;
+    name: string;
+    branch_key: string;
+};
+
+const csrfToken = () => {
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
 };
 
 export default function Checkout() {
@@ -68,6 +92,20 @@ export default function Checkout() {
     const [checkoutError, setCheckoutError] = useState('');
     const [checkoutSuccess, setCheckoutSuccess] = useState('');
     const [lastReceipt, setLastReceipt] = useState<Receipt | null>(null);
+    const [pendingDeliveryReceipt, setPendingDeliveryReceipt] = useState<Receipt | null>(null);
+
+    const [createDeliveryOpen, setCreateDeliveryOpen] = useState(false);
+    const [deliverySaleRef, setDeliverySaleRef] = useState('');
+    const [deliveryCustomerName, setDeliveryCustomerName] = useState('');
+    const [deliveryAddress, setDeliveryAddress] = useState('');
+    const [deliveryFee, setDeliveryFee] = useState('0');
+    const [deliveryAssignedToUserId, setDeliveryAssignedToUserId] = useState<string>('0');
+    const [deliveryScheduledFor, setDeliveryScheduledFor] = useState<string>('');
+    const [deliveryNotes, setDeliveryNotes] = useState('');
+    const [deliveryStaff, setDeliveryStaff] = useState<DeliveryStaff[]>([]);
+    const [deliveryIsCreating, setDeliveryIsCreating] = useState(false);
+    const [deliveryError, setDeliveryError] = useState('');
+    const [deliverySuccess, setDeliverySuccess] = useState('');
 
     const productById = useMemo(() => {
         const map = new Map<number, Product>();
@@ -155,26 +193,26 @@ export default function Checkout() {
         saveCartToServerRef.current = saveCartToServer;
     }, [saveCartToServer]);
 
-    // Debounced autosave when cart/received changes
-    useEffect(() => {
-        if (!branchKey) return;
-
-        if (saveTimerRef.current) {
-            window.clearTimeout(saveTimerRef.current);
+    const loadDeliveryStaff = useCallback(async () => {
+        try {
+            const res = await fetch('/cashier/deliveries/staff', {
+                headers: { Accept: 'application/json' },
+                credentials: 'same-origin',
+            });
+            const json = await res.json().catch(() => null);
+            if (!res.ok) throw new Error(json?.message || 'Failed to load delivery staff');
+            setDeliveryStaff((json?.staff ?? []) as DeliveryStaff[]);
+        } catch {
+            setDeliveryStaff([]);
         }
-
-        saveTimerRef.current = window.setTimeout(() => {
-            saveCartToServer(cartItems, received);
-        }, 350);
-
-        return () => {
-            if (saveTimerRef.current) {
-                window.clearTimeout(saveTimerRef.current);
-            }
-        };
-    }, [branchKey, cartItems, received, saveCartToServer]);
+    }, []);
 
     const printReceipt = useCallback((receipt: Receipt) => {
+        const deliveryFeeAmount = Number(receipt.delivery_fee) || 0;
+        const grandTotal = (Number(receipt.total) || 0) + (deliveryFeeAmount > 0 ? deliveryFeeAmount : 0);
+        const receivedAmount = Number(receipt.received) || 0;
+        const changeAmount = Math.max(0, receivedAmount - grandTotal);
+
         const lines = receipt.items
             .map((it) => {
                 const name = String(it.name ?? '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -217,7 +255,8 @@ export default function Checkout() {
 </head>
 <body>
   <div class="wrap">
-    <h1 class="h1">POS Receipt</h1>
+    <h1 class="h1">EM'S HARDWARE</h1>
+    <div class="sub">EMMA B. ZAPORTIZA</div>
     <div class="sub">Thank you for your purchase</div>
     <div class="meta">
       <div><span>Ref</span><span>${receipt.ref}</span></div>
@@ -231,11 +270,11 @@ export default function Checkout() {
     <div class="hr"></div>
     <div class="totals">
       <div><span>Subtotal</span><span>${peso(receipt.subtotal)}</span></div>
-      <div class="big"><span>Total</span><span>${peso(receipt.total)}</span></div>
-      <div><span>Received</span><span>${peso(receipt.received)}</span></div>
-      <div><span>Change</span><span>${peso(receipt.change)}</span></div>
+      ${deliveryFeeAmount > 0 ? `<div><span>Delivery Fee</span><span>${peso(deliveryFeeAmount)}</span></div>` : ''}
+      <div class="big"><span>Total</span><span>${peso(grandTotal)}</span></div>
+      <div><span>Received</span><span>${peso(receivedAmount)}</span></div>
+      <div><span>Change</span><span>${peso(changeAmount)}</span></div>
     </div>
-    <div class="foot">Powered by your POS system</div>
   </div>
   <script>window.onload=function(){window.print();};</script>
 </body>
@@ -247,6 +286,213 @@ export default function Checkout() {
         pw.document.write(html);
         pw.document.close();
     }, []);
+
+    const completeCheckout = useCallback(
+        async ({ shouldPrint }: { shouldPrint: boolean }) => {
+            if (cartItems.length === 0) return null;
+
+            setCheckoutError('');
+            setCheckoutSuccess('');
+
+            const currentSubtotal = cartItems.reduce((sum, i) => sum + i.price * i.qty, 0);
+            const currentTotal = currentSubtotal;
+            if (received < currentTotal) {
+                setCheckoutError('Insufficient amount received.');
+                return null;
+            }
+
+            try {
+                const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
+
+                const res = await fetch('/Checkout/complete', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': token,
+                        Accept: 'application/json',
+                    },
+                    body: JSON.stringify({
+                        received,
+                        items: cartItems.map((i) => ({ product_id: i.id, qty: i.qty })),
+                    }),
+                });
+
+                const data = await res.json().catch(() => ({} as any));
+                if (!res.ok || !data?.ok) {
+                    setCheckoutError(data?.message || 'Checkout failed.');
+                    return null;
+                }
+
+                const now = new Date();
+                const ref =
+                    String(data.ref ?? '').trim() ||
+                    `S-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getTime()).slice(-6)}`;
+                const receipt: Receipt = {
+                    ref,
+                    createdAt: now.toLocaleString(),
+                    branchKey,
+                    items: cartItems.map((i) => ({
+                        name: i.name,
+                        qty: i.qty,
+                        price: i.price,
+                        lineTotal: i.price * i.qty,
+                    })),
+                    subtotal: currentTotal,
+                    total: currentTotal,
+                    received,
+                    change: Number(data.change ?? 0),
+                };
+
+                setLastReceipt(receipt);
+
+                setCheckoutSuccess(`Payment successful. Change: ${peso(data.change ?? 0)}`);
+                setCartItems([]);
+                setReceived(0);
+
+                if (shouldPrint) {
+                    printReceipt(receipt);
+                }
+
+                return receipt;
+            } catch (e) {
+                console.error(e);
+                setCheckoutError('Checkout failed. Please try again.');
+                return null;
+            }
+        },
+        [branchKey, cartItems, printReceipt, received],
+    );
+
+    const openCreateDelivery = useCallback(async () => {
+        setDeliveryError('');
+        setDeliverySuccess('');
+
+        const currentSubtotal = cartItems.reduce((sum, i) => sum + i.price * i.qty, 0);
+        const currentDeliveryFee = Math.max(0, Number(deliveryFee) || 0);
+        const grandTotal = currentSubtotal + (currentDeliveryFee > 0 ? currentDeliveryFee : 0);
+        if (cartItems.length > 0 && received < grandTotal) {
+            setCheckoutError('Insufficient amount received.');
+            return;
+        }
+
+        if (cartItems.length > 0) {
+            const receipt = await completeCheckout({ shouldPrint: false });
+            if (!receipt) return;
+
+            setPendingDeliveryReceipt(receipt);
+            setDeliverySaleRef(receipt.ref);
+        } else {
+            const ref = lastReceipt?.ref ?? '';
+            setDeliverySaleRef(ref);
+        }
+
+        setCreateDeliveryOpen(true);
+        void loadDeliveryStaff();
+    }, [cartItems.length, completeCheckout, lastReceipt?.ref, loadDeliveryStaff]);
+
+    const onCreateDeliveryOpenChange = useCallback(
+        (nextOpen: boolean) => {
+            if (!nextOpen && pendingDeliveryReceipt) {
+                printReceipt(pendingDeliveryReceipt);
+                setPendingDeliveryReceipt(null);
+            }
+
+            setCreateDeliveryOpen(nextOpen);
+        },
+        [pendingDeliveryReceipt, printReceipt],
+    );
+
+    const createDelivery = useCallback(async () => {
+        if (!deliverySaleRef.trim()) {
+            setDeliveryError('Sale reference is required.');
+            return;
+        }
+        if (!deliveryCustomerName.trim()) {
+            setDeliveryError('Customer name is required.');
+            return;
+        }
+        if (!deliveryAddress.trim()) {
+            setDeliveryError('Address is required.');
+            return;
+        }
+
+        setDeliveryIsCreating(true);
+        try {
+            setDeliveryError('');
+            setDeliverySuccess('');
+
+            const res = await fetch('/cashier/deliveries/create', {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken(),
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                    sale_ref: deliverySaleRef.trim(),
+                    customer_name: deliveryCustomerName.trim(),
+                    address: deliveryAddress.trim(),
+                    delivery_fee: Number(deliveryFee) || 0,
+                    assigned_to_user_id:
+                        Number(deliveryAssignedToUserId) > 0 ? Number(deliveryAssignedToUserId) : null,
+                    scheduled_for: deliveryScheduledFor ? new Date(deliveryScheduledFor).toISOString() : null,
+                    notes: deliveryNotes.trim() ? deliveryNotes.trim() : null,
+                }),
+            });
+
+            const json = await res.json().catch(() => null);
+            if (!res.ok) throw new Error(json?.message || 'Failed to create delivery');
+
+            setDeliverySuccess(`Delivery created: ${json?.ref ?? ''}`.trim());
+            setCreateDeliveryOpen(false);
+
+            const baseReceipt = pendingDeliveryReceipt ?? lastReceipt;
+            if (baseReceipt) {
+                printReceipt({
+                    ...baseReceipt,
+                    delivery_fee: Number(deliveryFee) || 0,
+                });
+            }
+            setPendingDeliveryReceipt(null);
+        } catch (e: any) {
+            const msg = e instanceof Error ? e.message : 'Failed to create delivery';
+            setDeliveryError(`Create: ${msg}`);
+        } finally {
+            setDeliveryIsCreating(false);
+        }
+    }, [
+        deliveryAddress,
+        deliveryAssignedToUserId,
+        deliveryCustomerName,
+        deliveryFee,
+        deliveryNotes,
+        deliverySaleRef,
+        deliveryScheduledFor,
+        lastReceipt,
+        pendingDeliveryReceipt,
+        printReceipt,
+    ]);
+
+    // Debounced autosave when cart/received changes
+    useEffect(() => {
+        if (!branchKey) return;
+
+        if (saveTimerRef.current) {
+            window.clearTimeout(saveTimerRef.current);
+        }
+
+        saveTimerRef.current = window.setTimeout(() => {
+            saveCartToServer(cartItems, received);
+        }, 350);
+
+        return () => {
+            if (saveTimerRef.current) {
+                window.clearTimeout(saveTimerRef.current);
+            }
+        };
+    }, [branchKey, cartItems, received, saveCartToServer]);
 
     const filteredProducts = useMemo(() => {
         const q = searchQuery.trim().toLowerCase();
@@ -346,69 +592,8 @@ export default function Checkout() {
     }, [saveCartToServer]);
 
     const handleCheckout = useCallback(async () => {
-        if (cartItems.length === 0) return;
-
-        setCheckoutError('');
-        setCheckoutSuccess('');
-
-        const currentSubtotal = cartItems.reduce((sum, i) => sum + i.price * i.qty, 0);
-        const currentTotal = currentSubtotal;
-        if (received < currentTotal) {
-            setCheckoutError('Insufficient amount received.');
-            return;
-        }
-
-        try {
-            const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
-
-            const res = await fetch('/Checkout/complete', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': token,
-                    'Accept': 'application/json',
-                },
-                body: JSON.stringify({
-                    received,
-                    items: cartItems.map((i) => ({ product_id: i.id, qty: i.qty })),
-                }),
-            });
-
-            const data = await res.json().catch(() => ({} as any));
-            if (!res.ok || !data?.ok) {
-                setCheckoutError(data?.message || 'Checkout failed.');
-                return;
-            }
-
-            const now = new Date();
-            const ref = String(data.ref ?? '').trim() || `S-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}-${String(now.getTime()).slice(-6)}`;
-            const receipt: Receipt = {
-                ref,
-                createdAt: now.toLocaleString(),
-                branchKey,
-                items: cartItems.map((i) => ({
-                    name: i.name,
-                    qty: i.qty,
-                    price: i.price,
-                    lineTotal: i.price * i.qty,
-                })),
-                subtotal: currentTotal,
-                total: currentTotal,
-                received,
-                change: Number(data.change ?? 0),
-            };
-
-            setLastReceipt(receipt);
-            printReceipt(receipt);
-
-            setCheckoutSuccess(`Payment successful. Change: ${peso(data.change ?? 0)}`);
-            setCartItems([]);
-            setReceived(0);
-        } catch (e) {
-            console.error(e);
-            setCheckoutError('Checkout failed. Please try again.');
-        }
-    }, [branchKey, cartItems, printReceipt, received]);
+        await completeCheckout({ shouldPrint: true });
+    }, [completeCheckout]);
 
     const [isScanning, setIsScanning] = useState(false);
     const [scannerError, setScannerError] = useState('');
@@ -549,7 +734,9 @@ export default function Checkout() {
     }, [cartItems]);
 
     const subtotal = cartItems.reduce((sum, i) => sum + i.price * i.qty, 0);
-    const total = subtotal;
+    const baseTotal = subtotal;
+    const deliveryFeeAmount = Math.max(0, Number(deliveryFee) || 0);
+    const total = baseTotal + (deliveryFeeAmount > 0 ? deliveryFeeAmount : 0);
     const change = Math.max(0, received - total);
 
     return (
@@ -725,6 +912,20 @@ export default function Checkout() {
                                         {peso(subtotal)}
                                     </div>
 
+                                    <div className="text-muted-foreground">Delivery Fee (optional):</div>
+                                    <div className="flex items-center justify-end">
+                                        <input
+                                            className="h-8 w-32 rounded-md border-border bg-background px-2 text-right text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                            value={deliveryFee === '0' ? '' : String(deliveryFee)}
+                                            onChange={(e) => {
+                                                const next = e.target.value;
+                                                setDeliveryFee(next);
+                                            }}
+                                            inputMode="decimal"
+                                            placeholder="0"
+                                        />
+                                    </div>
+
                                     <div className="text-muted-foreground">Total:</div>
                                     <div className="text-right font-semibold text-lg">
                                         {peso(total)}
@@ -758,6 +959,7 @@ export default function Checkout() {
                             <div className="grid gap-3 md:grid-cols-2">
                                 <ActionButton label="Check - Out" onClick={handleCheckout} disabled={cartItems.length === 0} />
                                 <ActionButton label="Clear" onClick={clearCart} disabled={cartItems.length === 0} />
+                                <ActionButton label="Create Delivery" onClick={openCreateDelivery} disabled={cartItems.length === 0} />
                             </div>
 
                             {lastReceipt && (
@@ -767,6 +969,114 @@ export default function Checkout() {
                     </section>
                 </div>
             </div>
+
+            <Dialog open={createDeliveryOpen} onOpenChange={onCreateDeliveryOpenChange}>
+                <DialogContent className="!w-[86vw] !max-w-3xl">
+                    <DialogHeader>
+                        <DialogTitle>Create Delivery</DialogTitle>
+                        <DialogDescription>Use a sale reference and enter delivery details.</DialogDescription>
+                    </DialogHeader>
+
+                    <div className="max-h-[70vh] overflow-y-auto pr-1">
+                        {deliveryError && (
+                            <div className="mb-3 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                                {deliveryError}
+                            </div>
+                        )}
+                        {deliverySuccess && (
+                            <div className="mb-3 rounded-lg border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800">
+                                {deliverySuccess}
+                            </div>
+                        )}
+
+                        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium">Sale Ref</label>
+                                <Input
+                                    value={deliverySaleRef}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDeliverySaleRef(e.target.value)}
+                                    placeholder="e.g. TRX-1001"
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium">Customer Name</label>
+                                <Input
+                                    value={deliveryCustomerName}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDeliveryCustomerName(e.target.value)}
+                                    placeholder="e.g. Juan Dela Cruz"
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium">Delivery Date &amp; Time</label>
+                                <Input
+                                    type="datetime-local"
+                                    value={deliveryScheduledFor}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDeliveryScheduledFor(e.target.value)}
+                                />
+                            </div>
+
+                            <div className="space-y-2 md:col-span-2 lg:col-span-3">
+                                <label className="text-sm font-medium">Address</label>
+                                <Textarea
+                                    value={deliveryAddress}
+                                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDeliveryAddress(e.target.value)}
+                                    placeholder="Delivery address"
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium">Delivery Fee</label>
+                                <Input
+                                    type="number"
+                                    inputMode="decimal"
+                                    value={deliveryFee}
+                                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDeliveryFee(e.target.value)}
+                                    placeholder="0"
+                                />
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium">Assign To</label>
+                                <Select value={deliveryAssignedToUserId} onValueChange={(v) => setDeliveryAssignedToUserId(v)}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select staff" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="0">Unassigned</SelectItem>
+                                        {deliveryStaff.map((s) => (
+                                            <SelectItem key={s.id} value={String(s.id)}>
+                                                {s.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-2 md:col-span-2 lg:col-span-3">
+                                <label className="text-sm font-medium">Notes (optional)</label>
+                                <Textarea
+                                    value={deliveryNotes}
+                                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => setDeliveryNotes(e.target.value)}
+                                    placeholder="Extra instructions"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <DialogFooter className="gap-2 sm:gap-0">
+                        <DialogClose asChild>
+                            <Button type="button" variant="secondary" disabled={deliveryIsCreating}>
+                                Cancel
+                            </Button>
+                        </DialogClose>
+                        <Button onClick={createDelivery} disabled={deliveryIsCreating} className="sm:min-w-[180px]">
+                            {deliveryIsCreating ? 'Creating...' : 'Create Delivery'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
         </AppLayout>
     );

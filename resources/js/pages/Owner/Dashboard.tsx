@@ -32,9 +32,17 @@ import type { BreadcrumbItem } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useBranchFilter } from '@/hooks/use-branch-filter';
+import {
+    Area,
+    AreaChart,
+    CartesianGrid,
+    ResponsiveContainer,
+    Tooltip,
+    XAxis,
+    YAxis,
+} from 'recharts';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -84,7 +92,7 @@ export default function Dashboard() {
             setData(json);
         } catch (e: any) {
             setError(e?.message ? String(e.message) : 'Failed to load dashboard');
-        } finally {
+        } finally { 
             setIsLoading(false);
         }
     }, [branch, timeRange]);
@@ -375,22 +383,38 @@ function EnhancedSalesChart({
 
     return (
         <div className="space-y-4">
-            <div className="grid gap-4">
-                {rows.map((item) => (
-                    <div key={item.label} className="space-y-2">
-                        <div className="flex items-center justify-between text-sm">
-                            <span className="font-medium">{item.label}</span>
-                            <span className="font-bold">₱{isLoading ? '…' : item.value.toLocaleString()}</span>
-                        </div>
-                        <Progress 
-                            value={(item.value / maxValue) * 100} 
-                            className="h-3"
-                            style={{ 
-                                '--progress-background': item.color,
-                            } as React.CSSProperties}
+            <div className="h-56 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={rows} margin={{ top: 6, right: 28, left: 0, bottom: 0 }}>
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis
+                            dataKey="label"
+                            tick={{ fontSize: 12 }}
+                            interval={0}
+                            tickMargin={8}
+                            padding={{ left: 8, right: 24 }}
                         />
-                    </div>
-                ))}
+                        <YAxis
+                            tick={{ fontSize: 12 }}
+                            width={62}
+                            domain={[0, Math.ceil(maxValue)]}
+                            tickFormatter={(v) => `₱${Number(v || 0).toLocaleString()}`}
+                        />
+                        <Tooltip
+                            formatter={(value: any) => [`₱${Number(value || 0).toLocaleString()}`, 'Revenue']}
+                            labelFormatter={(label: any) => String(label ?? '')}
+                        />
+                        <Area
+                            type="monotone"
+                            dataKey="value"
+                            stroke="#f97316"
+                            fill="#fb923c"
+                            fillOpacity={0.25}
+                            strokeWidth={2}
+                            isAnimationActive={!isLoading}
+                        />
+                    </AreaChart>
+                </ResponsiveContainer>
             </div>
             <div className="flex items-center justify-between text-xs text-muted-foreground pt-2 border-t">
                 <span>Total Revenue</span>

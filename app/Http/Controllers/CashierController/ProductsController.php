@@ -28,17 +28,34 @@ class ProductsController extends Controller
             $branchKey = null;
         }
 
-        $status = request('status', 'active');
+        if (is_string($branchKey) && $branchKey !== '') {
+            $query->whereHas('stocks', function ($q) use ($branchKey) {
+                $q->where('branch_key', $branchKey);
+            });
+        }
+
+        $status = request('status', 'reserved');
         if (!is_string($status) || trim($status) === '') {
-            $status = 'active';
+            $status = 'reserved';
         }
 
-        $allowedStatuses = ['active', 'defective', 'out_of_stock', 'reserved'];
+        $allowedStatuses = ['defective', 'out_of_stock', 'reserved', 'low_stock'];
         if (!in_array($status, $allowedStatuses, true)) {
-            $status = 'active';
+            $status = 'reserved';
         }
 
-        if ($status === 'defective') {
+        if ($status === 'low_stock') {
+            $query->where('status', 'reserved');
+            $query->whereHas('stocks', function ($q) use ($branchKey) {
+                if (is_string($branchKey) && $branchKey !== '') {
+                    $q->where('branch_key', $branchKey);
+                }
+
+                $q->where('stock', '>', 0)
+                    ->where('reorder_level', '>', 0)
+                    ->whereColumn('stock', '<=', 'reorder_level');
+            });
+        } elseif ($status === 'defective') {
             $query->whereHas('stocks', function ($q) use ($branchKey) {
                 if (is_string($branchKey) && $branchKey !== '') {
                     $q->where('branch_key', $branchKey);
@@ -93,18 +110,31 @@ class ProductsController extends Controller
         $validated = $request->validate([
             'sku' => ['required', 'string', 'max:255', 'unique:products,sku'],
             'barcode_value' => ['nullable', 'string', 'max:255', 'unique:products,barcode_value'],
+            'unit_of_measure' => ['nullable', 'string', 'max:50'],
+            'brand' => ['nullable', 'string', 'max:255'],
+            'color' => ['nullable', 'string', 'max:100'],
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'category' => ['nullable', 'string', 'max:255'],
             'price' => ['required', 'numeric', 'min:0'],
             'stock' => ['required', 'integer', 'min:0'],
             'restocking_level' => ['nullable', 'integer', 'min:0'],
-            'status' => ['nullable', Rule::in(['active', 'out_of_stock', 'reserved'])],
+            'status' => ['nullable', Rule::in(['out_of_stock', 'reserved'])],
             'image' => ['nullable', 'image', 'max:4096'],
         ]);
 
+        $stockQty = (int) ($validated['stock'] ?? 0);
+
         if (!array_key_exists('status', $validated) || $validated['status'] === null || trim((string) $validated['status']) === '') {
-            $validated['status'] = 'active';
+            $validated['status'] = $stockQty > 0 ? 'reserved' : 'out_of_stock';
+        }
+
+        if ($validated['status'] === 'reserved' && $stockQty <= 0) {
+            $validated['status'] = 'out_of_stock';
+        }
+
+        if ($validated['status'] === 'out_of_stock' && $stockQty > 0) {
+            $validated['status'] = 'reserved';
         }
 
         if (!array_key_exists('restocking_level', $validated) || $validated['restocking_level'] === null) {
@@ -113,6 +143,10 @@ class ProductsController extends Controller
 
         if (!isset($validated['barcode_value']) || $validated['barcode_value'] === null || trim((string) $validated['barcode_value']) === '') {
             $validated['barcode_value'] = $validated['sku'];
+        }
+
+        if (!array_key_exists('unit_of_measure', $validated) || $validated['unit_of_measure'] === null || trim((string) $validated['unit_of_measure']) === '') {
+            $validated['unit_of_measure'] = 'pc';
         }
 
         if ($request->hasFile('image')) {
@@ -125,7 +159,11 @@ class ProductsController extends Controller
         if (is_string($branchKey) && trim($branchKey) !== '') {
             ProductStock::updateOrCreate(
                 ['product_id' => $product->id, 'branch_key' => $branchKey],
-                ['stock' => (int) $validated['stock'], 'defective_qty' => 0]
+                [
+                    'stock' => (int) $validated['stock'],
+                    'defective_qty' => 0,
+                    'reorder_level' => (int) ($validated['restocking_level'] ?? 0),
+                ]
             );
         }
 
@@ -137,13 +175,16 @@ class ProductsController extends Controller
         $validated = $request->validate([
             'sku' => ['required', 'string', 'max:255', Rule::unique('products', 'sku')->ignore($product->id)],
             'barcode_value' => ['nullable', 'string', 'max:255', Rule::unique('products', 'barcode_value')->ignore($product->id)],
+            'unit_of_measure' => ['nullable', 'string', 'max:50'],
+            'brand' => ['nullable', 'string', 'max:255'],
+            'color' => ['nullable', 'string', 'max:100'],
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'category' => ['nullable', 'string', 'max:255'],
             'price' => ['required', 'numeric', 'min:0'],
             'stock' => ['nullable', 'integer', 'min:0'],
             'restocking_level' => ['nullable', 'integer', 'min:0'],
-            'status' => ['nullable', Rule::in(['active', 'out_of_stock', 'reserved'])],
+            'status' => ['nullable', Rule::in(['out_of_stock', 'reserved'])],
             'image' => ['nullable', 'image', 'max:4096'],
         ]);
 
@@ -155,8 +196,22 @@ class ProductsController extends Controller
             $validated['restocking_level'] = $product->restocking_level ?? 0;
         }
 
+        $stockQty = (int) ($validated['stock'] ?? $product->stock ?? 0);
+
         if (!array_key_exists('status', $validated) || $validated['status'] === null || trim((string) $validated['status']) === '') {
-            $validated['status'] = $product->status ?? 'active';
+            $validated['status'] = $product->status;
+
+            if (!is_string($validated['status']) || trim($validated['status']) === '') {
+                $validated['status'] = $stockQty > 0 ? 'reserved' : 'out_of_stock';
+            }
+        }
+
+        if ($validated['status'] === 'reserved' && $stockQty <= 0) {
+            $validated['status'] = 'out_of_stock';
+        }
+
+        if ($validated['status'] === 'out_of_stock' && $stockQty > 0) {
+            $validated['status'] = 'reserved';
         }
 
         // If barcode_value not provided, keep existing unless it was just mirroring the old SKU.
@@ -172,6 +227,10 @@ class ProductsController extends Controller
             }
         }
 
+        if (!array_key_exists('unit_of_measure', $validated) || $validated['unit_of_measure'] === null || trim((string) $validated['unit_of_measure']) === '') {
+            $validated['unit_of_measure'] = $product->unit_of_measure ?? 'pc';
+        }
+
         if ($request->hasFile('image')) {
             if (is_string($product->image_path) && $product->image_path !== '') {
                 Storage::disk('public')->delete($product->image_path);
@@ -180,6 +239,14 @@ class ProductsController extends Controller
         }
 
         $product->update($validated);
+
+        $branchKey = $request->user()?->branch_key;
+        if (is_string($branchKey) && trim($branchKey) !== '') {
+            ProductStock::updateOrCreate(
+                ['product_id' => $product->id, 'branch_key' => $branchKey],
+                ['reorder_level' => (int) ($validated['restocking_level'] ?? 0)]
+            );
+        }
 
         return back();
     }

@@ -218,21 +218,43 @@ class DeliveryController extends Controller
             $queueOrder = ((int) ($max ?? 0)) + 1;
         }
 
-        $delivery = PosDelivery::create([
-            'ref' => $ref,
-            'pos_sale_id' => $sale->id,
-            'branch_key' => $branchKey,
-            'status' => 'preparing',
-            'scheduled_for' => $scheduledFor,
-            'queue_order' => $queueOrder,
-            'customer_name' => trim($validated['customer_name']),
-            'address' => trim($validated['address']),
-            'delivery_fee' => isset($validated['delivery_fee']) ? (float) $validated['delivery_fee'] : 0,
-            'notes' => isset($validated['notes']) ? trim((string) $validated['notes']) : null,
-            'assigned_to_user_id' => $assignedToUserId ?: null,
-            'assigned_by_user_id' => $user?->id,
-            'assigned_at' => $assignedToUserId ? now() : null,
-        ]);
+        $deliveryFee = isset($validated['delivery_fee']) ? (float) $validated['delivery_fee'] : 0;
+
+        $delivery = null;
+        DB::transaction(function () use (
+            $ref,
+            $sale,
+            $branchKey,
+            $scheduledFor,
+            $queueOrder,
+            $validated,
+            $deliveryFee,
+            $assignedToUserId,
+            $user,
+            &$delivery
+        ) {
+            $delivery = PosDelivery::create([
+                'ref' => $ref,
+                'pos_sale_id' => $sale->id,
+                'branch_key' => $branchKey,
+                'status' => 'preparing',
+                'scheduled_for' => $scheduledFor,
+                'queue_order' => $queueOrder,
+                'customer_name' => trim($validated['customer_name']),
+                'address' => trim($validated['address']),
+                'delivery_fee' => $deliveryFee,
+                'notes' => isset($validated['notes']) ? trim((string) $validated['notes']) : null,
+                'assigned_to_user_id' => $assignedToUserId ?: null,
+                'assigned_by_user_id' => $user?->id,
+                'assigned_at' => $assignedToUserId ? now() : null,
+            ]);
+
+            if ($deliveryFee > 0) {
+                $sale->total = (float) $sale->total + $deliveryFee;
+                $sale->change = max(0, (float) $sale->received - (float) $sale->total);
+                $sale->save();
+            }
+        });
 
         return response()->json([
             'ok' => true,

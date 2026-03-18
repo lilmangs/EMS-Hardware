@@ -12,6 +12,9 @@ class Product extends Model
     protected $fillable = [
         'sku',
         'barcode_value',
+        'unit_of_measure',
+        'brand',
+        'color',
         'name',
         'description',
         'category',

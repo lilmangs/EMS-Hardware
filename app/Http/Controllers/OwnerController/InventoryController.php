@@ -45,6 +45,13 @@ class InventoryController extends Controller
             ->select(['id', 'sku', 'barcode_value', 'name', 'category', 'price', 'image_path'])
             ->orderBy('name');
 
+        if (count($branches) === 1) {
+            $onlyBranch = $branches[0];
+            $productQuery->whereHas('stocks', function ($q) use ($onlyBranch) {
+                $q->where('branch_key', $onlyBranch);
+            });
+        }
+
         $search = $validated['search'] ?? null;
         if (is_string($search) && trim($search) !== '') {
             $s = trim($search);
@@ -62,6 +69,11 @@ class InventoryController extends Controller
             return collect($branches)->map(function (string $bk) use ($p) {
                 $ps = $p->stocks->firstWhere('branch_key', $bk);
 
+                $baseStock = $ps?->stock;
+                if ($baseStock === null) {
+                    $baseStock = count($p->stocks) > 0 ? 0 : (int) ($p->stock ?? 0);
+                }
+
                 return [
                     'product_id' => $p->id,
                     'sku' => $p->sku,
@@ -71,9 +83,9 @@ class InventoryController extends Controller
                     'price' => $p->price,
                     'image_path' => $p->image_path,
                     'branch_key' => $bk,
-                    'stock' => $ps?->stock ?? (int) ($p->stock ?? 0),
+                    'stock' => (int) $baseStock,
                     'defective_qty' => $ps?->defective_qty ?? 0,
-                    'sellable_qty' => max(0, (int) ($ps?->stock ?? (int) ($p->stock ?? 0)) - (int) ($ps?->defective_qty ?? 0)),
+                    'sellable_qty' => max(0, (int) $baseStock - (int) ($ps?->defective_qty ?? 0)),
                     'reorder_level' => $ps?->reorder_level ?? 0,
                     'min_stock' => $ps?->min_stock ?? 0,
                     'max_stock' => $ps?->max_stock ?? 0,
