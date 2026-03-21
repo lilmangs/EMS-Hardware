@@ -7,6 +7,13 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { FileText, MoreHorizontal } from 'lucide-react';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
     Dialog,
     DialogClose,
@@ -123,6 +130,8 @@ export default function Delivery() {
     const [createOpen, setCreateOpen] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
+    const [selectedDelivery, setSelectedDelivery] = useState<DeliveryRow | null>(null);
+    const [isDetailsOpen, setIsDetailsOpen] = useState(false);
 
     const seqRef = useRef(0);
     const abortRef = useRef<AbortController | null>(null);
@@ -292,6 +301,11 @@ export default function Delivery() {
     const staffOptions = useMemo(() => {
         return [{ id: 0, name: 'Unassigned', branch_key: branchKey ?? '' } as DeliveryStaff, ...staff];
     }, [branchKey, staff]);
+
+    const openDeliveryDetails = useCallback((d: DeliveryRow) => {
+        setSelectedDelivery(d);
+        setIsDetailsOpen(true);
+    }, []);
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -478,12 +492,13 @@ export default function Delivery() {
                                             <TableHead>Total</TableHead>
                                             <TableHead>Status</TableHead>
                                             <TableHead>Assigned To</TableHead>
+                                            <TableHead className="text-right w-12">Action</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
                                         {deliveries.length === 0 ? (
                                             <TableRow>
-                                                <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
+                                                <TableCell colSpan={10} className="py-10 text-center text-muted-foreground">
                                                     {isLoading ? 'Loading...' : 'No deliveries found.'}
                                                 </TableCell>
                                             </TableRow>
@@ -494,7 +509,19 @@ export default function Delivery() {
                                                 const saleTotal = Number(d.sale?.total) || 0;
                                                 const total = Number(d.delivery_total) || saleTotal + fee;
                                                 return (
-                                                    <TableRow key={d.id} className="hover:bg-muted/40">
+                                                    <TableRow
+                                                        key={d.id}
+                                                        className="cursor-pointer hover:bg-muted/50"
+                                                        role="button"
+                                                        tabIndex={0}
+                                                        onClick={() => openDeliveryDetails(d)}
+                                                        onKeyDown={(e) => {
+                                                            if (e.key === 'Enter' || e.key === ' ') {
+                                                                e.preventDefault();
+                                                                openDeliveryDetails(d);
+                                                            }
+                                                        }}
+                                                    >
                                                         <TableCell>
                                                             <div className="font-medium">{d.ref}</div>
                                                             <div className="text-xs text-muted-foreground">{formatDateTime(d.created_at)}</div>
@@ -527,7 +554,13 @@ export default function Delivery() {
                                                                     });
                                                                 }}
                                                             >
-                                                                <SelectTrigger className="w-[220px]">
+                                                                <SelectTrigger
+                                                                    className="w-[220px]"
+                                                                    onClick={(e) => {
+                                                                        e.preventDefault();
+                                                                        e.stopPropagation();
+                                                                    }}
+                                                                >
                                                                     <SelectValue placeholder="Select staff" />
                                                                 </SelectTrigger>
                                                                 <SelectContent>
@@ -539,6 +572,34 @@ export default function Delivery() {
                                                                 </SelectContent>
                                                             </Select>
                                                         </TableCell>
+                                                        <TableCell className="text-right">
+                                                            <DropdownMenu>
+                                                                <DropdownMenuTrigger asChild>
+                                                                    <button
+                                                                        type="button"
+                                                                        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                                                                        onClick={(e) => {
+                                                                            e.preventDefault();
+                                                                            e.stopPropagation();
+                                                                        }}
+                                                                    >
+                                                                        <MoreHorizontal className="h-4 w-4" />
+                                                                    </button>
+                                                                </DropdownMenuTrigger>
+                                                                <DropdownMenuContent align="end" className="w-44">
+                                                                    <DropdownMenuItem
+                                                                        onClick={(e) => {
+                                                                            e.preventDefault();
+                                                                            e.stopPropagation();
+                                                                            openDeliveryDetails(d);
+                                                                        }}
+                                                                    >
+                                                                        <FileText className="mr-2 h-4 w-4" />
+                                                                        View Details
+                                                                    </DropdownMenuItem>
+                                                                </DropdownMenuContent>
+                                                            </DropdownMenu>
+                                                        </TableCell>
                                                     </TableRow>
                                                 );
                                             })
@@ -549,6 +610,105 @@ export default function Delivery() {
                         </div>
                     </CardContent>
                 </Card>
+
+                <Dialog
+                    open={isDetailsOpen}
+                    onOpenChange={(open) => {
+                        setIsDetailsOpen(open);
+                        if (!open) setSelectedDelivery(null);
+                    }}
+                >
+                    <DialogContent className="sm:max-w-5xl">
+                        <DialogHeader>
+                            <DialogTitle>Delivery Details</DialogTitle>
+                            <DialogDescription>View delivery information.</DialogDescription>
+                        </DialogHeader>
+
+                        {!selectedDelivery ? (
+                            <div className="text-sm text-muted-foreground">No delivery selected.</div>
+                        ) : (
+                            <div className="grid gap-4 lg:grid-cols-2">
+                                <div className="space-y-4">
+                                    <div className="grid gap-3 rounded-md border p-4 text-sm sm:grid-cols-2">
+                                        <div>
+                                            <div className="text-muted-foreground">Delivery Ref</div>
+                                            <div className="font-medium">{selectedDelivery.ref}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-muted-foreground">Status</div>
+                                            <div className="font-medium">{statusBadge(selectedDelivery.status)}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-muted-foreground">Created</div>
+                                            <div className="font-medium">{formatDateTime(selectedDelivery.created_at)}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-muted-foreground">Scheduled</div>
+                                            <div className="font-medium">
+                                                {selectedDelivery.scheduled_for ? formatDateTime(selectedDelivery.scheduled_for) : '—'}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <div className="text-muted-foreground">Items</div>
+                                            <div className="font-medium tabular-nums">{selectedDelivery.items}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-muted-foreground">Assigned To</div>
+                                            <div className="font-medium">{selectedDelivery.assigned_to?.name ?? 'Unassigned'}</div>
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-md border p-4 text-sm">
+                                        <div className="text-muted-foreground">Customer</div>
+                                        <div className="mt-1 font-medium">{selectedDelivery.customer_name}</div>
+                                        <div className="mt-3 text-muted-foreground">Address</div>
+                                        <div className="mt-1 font-medium whitespace-pre-line">{selectedDelivery.address}</div>
+                                    </div>
+
+                                    {!!selectedDelivery.notes && (
+                                        <div className="rounded-md border p-4 text-sm">
+                                            <div className="text-muted-foreground">Notes</div>
+                                            <div className="mt-1 font-medium whitespace-pre-line">{selectedDelivery.notes}</div>
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="space-y-4">
+                                    <div className="rounded-md border p-4 text-sm">
+                                        <div className="grid gap-3 sm:grid-cols-2">
+                                            <div>
+                                                <div className="text-muted-foreground">Sale Ref</div>
+                                                <div className="mt-1 font-medium">{selectedDelivery.sale?.ref ?? '—'}</div>
+                                            </div>
+                                            <div>
+                                                <div className="text-muted-foreground">Sale Date</div>
+                                                <div className="mt-1 font-medium">
+                                                    {selectedDelivery.sale?.created_at ? formatDateTime(selectedDelivery.sale.created_at) : '—'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-md border">
+                                        <div className="border-b px-4 py-3 text-sm font-medium">Totals</div>
+                                        <div className="space-y-2 p-4 text-sm">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <span className="text-muted-foreground">Delivery Fee</span>
+                                                <span className="font-medium tabular-nums">{peso(selectedDelivery.delivery_fee)}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between gap-3">
+                                                <span className="text-muted-foreground">Total</span>
+                                                <span className="font-semibold tabular-nums">
+                                                    {peso(selectedDelivery.delivery_total ?? (Number(selectedDelivery.sale?.total) || 0) + (Number(selectedDelivery.delivery_fee) || 0))}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </DialogContent>
+                </Dialog>
             </div>
         </AppLayout>
     );

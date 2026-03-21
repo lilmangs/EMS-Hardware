@@ -45,15 +45,14 @@ class ProductsController extends Controller
         }
 
         if ($status === 'low_stock') {
-            $query->where('status', 'reserved');
             $query->whereHas('stocks', function ($q) use ($branchKey) {
                 if (is_string($branchKey) && $branchKey !== '') {
                     $q->where('branch_key', $branchKey);
                 }
 
-                $q->where('stock', '>', 0)
+                $q->whereRaw('(stock - COALESCE(defective_qty, 0)) > 0')
                     ->where('reorder_level', '>', 0)
-                    ->whereColumn('stock', '<=', 'reorder_level');
+                    ->whereRaw('(stock - COALESCE(defective_qty, 0)) <= reorder_level');
             });
         } elseif ($status === 'defective') {
             $query->whereHas('stocks', function ($q) use ($branchKey) {
@@ -62,6 +61,24 @@ class ProductsController extends Controller
                 }
                 $q->where('defective_qty', '>', 0);
             });
+        } elseif ($status === 'out_of_stock') {
+            if (is_string($branchKey) && $branchKey !== '') {
+                $query->whereHas('stocks', function ($q) use ($branchKey) {
+                    $q->where('branch_key', $branchKey)
+                        ->whereRaw('(stock - COALESCE(defective_qty, 0)) <= 0');
+                });
+            } else {
+                $query->where('stock', '<=', 0);
+            }
+        } elseif ($status === 'reserved') {
+            if (is_string($branchKey) && $branchKey !== '') {
+                $query->whereHas('stocks', function ($q) use ($branchKey) {
+                    $q->where('branch_key', $branchKey)
+                        ->whereRaw('(stock - COALESCE(defective_qty, 0)) > 0');
+                });
+            } else {
+                $query->where('stock', '>', 0);
+            }
         } else {
             $query->where('status', $status);
         }
@@ -123,19 +140,8 @@ class ProductsController extends Controller
             'image' => ['nullable', 'image', 'max:4096'],
         ]);
 
-        $stockQty = (int) ($validated['stock'] ?? 0);
-
-        if (!array_key_exists('status', $validated) || $validated['status'] === null || trim((string) $validated['status']) === '') {
-            $validated['status'] = $stockQty > 0 ? 'reserved' : 'out_of_stock';
-        }
-
-        if ($validated['status'] === 'reserved' && $stockQty <= 0) {
-            $validated['status'] = 'out_of_stock';
-        }
-
-        if ($validated['status'] === 'out_of_stock' && $stockQty > 0) {
-            $validated['status'] = 'reserved';
-        }
+        // Always default new products to reserved. Stock state will still be reflected via stock qty.
+        $validated['status'] = 'reserved';
 
         if (!array_key_exists('restocking_level', $validated) || $validated['restocking_level'] === null) {
             $validated['restocking_level'] = 0;

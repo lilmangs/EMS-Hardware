@@ -315,7 +315,16 @@ class RefundController extends Controller
                 $product = Product::query()->find($productId);
                 if ($product) {
                     $totalStock = (int) ProductStock::query()->where('product_id', $productId)->sum('stock');
-                    $product->update(['stock' => $totalStock]);
+
+                    $nextStatus = $product->status;
+                    if ($product->status !== 'defective') {
+                        $nextStatus = $totalStock > 0 ? 'reserved' : 'out_of_stock';
+                    }
+
+                    $product->update([
+                        'stock' => $totalStock,
+                        'status' => $nextStatus,
+                    ]);
                 }
             }
         });

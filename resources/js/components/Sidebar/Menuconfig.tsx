@@ -58,8 +58,8 @@ export const sidebarMenus: Record<string, MenuItem[]> = {
     ],
     staff: [
         { label: 'Dashboard', href: '/dashboard/staff', icon: LayoutGrid },
-        { label: 'Products', href: '/Products', icon: ShoppingCart },
         { label: 'Inventory', href: '/inventory', icon: PackageSearch },
+        { label: 'Products', href: '/Products', icon: ShoppingCart }, 
         { label: 'Archive', href: '/staff/archive', icon: Archive },
         { label: 'Activity Log', href: '/staff/activity-log', icon: FileText },
 

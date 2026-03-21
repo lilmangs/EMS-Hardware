@@ -1,6 +1,6 @@
 import { Head, router, usePage } from '@inertiajs/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CheckCircle2, Search, TicketX } from 'lucide-react';
+import { AlertCircle, CheckCircle2, MoreHorizontal, Search, TicketX } from 'lucide-react';
 import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -9,6 +9,12 @@ import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
     Dialog,
     DialogContent,
@@ -128,6 +134,8 @@ export default function Refund() {
     const [condition, setCondition] = useState<RefundCondition>('resellable');
 
     const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
+    const [selectedRecentRefund, setSelectedRecentRefund] = useState<RecentRefund | null>(null);
+    const [isRecentRefundOpen, setIsRecentRefundOpen] = useState(false);
 
     const [isLoadingSale, setIsLoadingSale] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -251,6 +259,11 @@ export default function Refund() {
             setIsSubmitting(false);
         }
     }, [condition, lookupSale, reason, sale, selectedQty]);
+
+    const openRecentRefund = useCallback((r: RecentRefund) => {
+        setSelectedRecentRefund(r);
+        setIsRecentRefundOpen(true);
+    }, []);
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -456,11 +469,24 @@ export default function Refund() {
                                     <TableHead className="text-right">Amount</TableHead>
                                     <TableHead>Reason</TableHead>
                                     <TableHead>Date</TableHead>
+                                    <TableHead className="text-right w-12">Action</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {recentRefunds.map((r) => (
-                                    <TableRow key={r.id}>
+                                    <TableRow
+                                        key={r.id}
+                                        className="cursor-pointer hover:bg-muted/50"
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={() => openRecentRefund(r)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' || e.key === ' ') {
+                                                e.preventDefault();
+                                                openRecentRefund(r);
+                                            }
+                                        }}
+                                    >
                                         <TableCell className="font-medium">{r.ref}</TableCell>
                                         <TableCell className="text-muted-foreground">{r.sale_ref ?? '—'}</TableCell>
                                         <TableCell>{statusBadge(r.status)}</TableCell>
@@ -468,11 +494,38 @@ export default function Refund() {
                                         <TableCell className="text-right font-medium">{peso(r.amount)}</TableCell>
                                         <TableCell className="max-w-[320px] truncate" title={r.reason ?? ''}>{r.reason ?? '—'}</TableCell>
                                         <TableCell className="text-muted-foreground">{formatDateTime(r.created_at)}</TableCell>
+                                        <TableCell className="text-right">
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <button
+                                                        type="button"
+                                                        className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                        }}
+                                                    >
+                                                        <MoreHorizontal className="h-4 w-4" />
+                                                    </button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end" className="w-44">
+                                                    <DropdownMenuItem
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                            openRecentRefund(r);
+                                                        }}
+                                                    >
+                                                        View Details
+                                                    </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        </TableCell>
                                     </TableRow>
                                 ))}
                                 {!recentRefunds.length && (
                                     <TableRow>
-                                        <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                                        <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
                                             No refunds yet.
                                         </TableCell>
                                     </TableRow>
@@ -481,6 +534,93 @@ export default function Refund() {
                         </Table>
                     </CardContent>
                 </Card>
+
+                <Dialog
+                    open={isRecentRefundOpen}
+                    onOpenChange={(open) => {
+                        setIsRecentRefundOpen(open);
+                        if (!open) setSelectedRecentRefund(null);
+                    }}
+                >
+                    <DialogContent className="sm:max-w-5xl">
+                        <DialogHeader>
+                            <DialogTitle>Refund Details</DialogTitle>
+                            <DialogDescription>Review refund information and refunded items.</DialogDescription>
+                        </DialogHeader>
+
+                        {!selectedRecentRefund ? (
+                            <div className="text-sm text-muted-foreground">No refund selected.</div>
+                        ) : (
+                            <div className="grid gap-4 lg:grid-cols-2">
+                                <div className="space-y-4">
+                                    <div className="grid gap-3 rounded-md border p-4 text-sm sm:grid-cols-2">
+                                        <div>
+                                            <div className="text-muted-foreground">Refund Ref</div>
+                                            <div className="font-medium">{selectedRecentRefund.ref}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-muted-foreground">Sale Ref</div>
+                                            <div className="font-medium">{selectedRecentRefund.sale_ref ?? '—'}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-muted-foreground">Created</div>
+                                            <div className="font-medium">{formatDateTime(selectedRecentRefund.created_at)}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-muted-foreground">Status</div>
+                                            <div className="font-medium">{statusBadge(selectedRecentRefund.status)}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-muted-foreground">Inventory</div>
+                                            <div className="font-medium">{restockBadge(selectedRecentRefund.restock)}</div>
+                                        </div>
+                                        <div>
+                                            <div className="text-muted-foreground">Amount</div>
+                                            <div className="font-semibold tabular-nums">{peso(selectedRecentRefund.amount)}</div>
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-md border p-4 text-sm">
+                                        <div className="text-muted-foreground">Reason</div>
+                                        <div className="mt-1 font-medium">{selectedRecentRefund.reason ?? '—'}</div>
+                                    </div>
+                                </div>
+
+                                <div className="rounded-md border">
+                                    <div className="border-b px-4 py-3 text-sm font-medium">Refunded Items</div>
+                                    <div className="max-h-[60vh] overflow-auto">
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow>
+                                                    <TableHead>Item</TableHead>
+                                                    <TableHead className="text-right">Qty</TableHead>
+                                                    <TableHead className="text-right">Amount</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {(selectedRecentRefund.items ?? []).map((it, idx) => (
+                                                    <TableRow key={`${selectedRecentRefund.id}-${idx}`}>
+                                                        <TableCell className="font-medium">{it.name}</TableCell>
+                                                        <TableCell className="text-right tabular-nums">{it.qty}</TableCell>
+                                                        <TableCell className="text-right tabular-nums">{peso(it.amount)}</TableCell>
+                                                    </TableRow>
+                                                ))}
+
+                                                {(!selectedRecentRefund.items || selectedRecentRefund.items.length === 0) && (
+                                                    <TableRow>
+                                                        <TableCell colSpan={3} className="py-6 text-center text-sm text-muted-foreground">
+                                                            No items.
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </DialogContent>
+                </Dialog>
             </div>
         </AppLayout>
     );

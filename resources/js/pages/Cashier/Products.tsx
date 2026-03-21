@@ -571,58 +571,52 @@ export default function Products() {
         return raw.replace(/[^a-zA-Z0-9-]/g, '').slice(0, 32);
     }, []);
 
+
     const onCreateProduct = () => {
         const sku = newProduct.sku.trim();
         const name = newProduct.name.trim();
         if (!sku || !name) return;
 
-        const status = String(newProduct.status ?? 'active');
-
         const form = new FormData();
         form.append('sku', sku);
-        if (String(newProduct.barcode_value ?? '').trim() !== '') {
-            form.append('barcode_value', String(newProduct.barcode_value));
-        }
+        form.append('name', name);
+        form.append('category', String(newProduct.category ?? ''));
+        form.append('barcode_value', String(newProduct.barcode_value ?? ''));
         form.append('unit_of_measure', String(newProduct.unit_of_measure ?? 'pc'));
         form.append('brand', String(newProduct.brand ?? ''));
         form.append('color', String(newProduct.color ?? ''));
-        form.append('name', name);
         form.append('description', String(newProduct.description ?? ''));
-        form.append('category', newProduct.category ?? '');
-        form.append('price', String(Number(newProduct.price) || 0));
-        form.append('stock', String(Number(newProduct.stock) || 0));
-        form.append('restocking_level', String(Number(newProduct.restocking_level) || 0));
-        form.append('status', status);
+        form.append('price', String(newProduct.price ?? 0));
+        form.append('stock', String(newProduct.stock ?? 0));
+        form.append('restocking_level', String(newProduct.restocking_level ?? 0));
+
         if (newProductImage) {
             form.append('image', newProductImage);
         }
 
-        router.post(
-            '/Products',
-            form,
-            {
-                preserveScroll: true,
-                onSuccess: () => {
-                    setIsAddProductOpen(false);
-                    setNewProduct({
-                        sku: '',
-                        barcode_value: '',
-                        unit_of_measure: 'pc',
-                        brand: '',
-                        color: '',
-                        name: '',
-                        description: '',
-                        category: '',
-                        price: 0,
-                        stock: 0,
-                        restocking_level: 0,
-                        image_path: null,
-                        status: 'reserved',
-                    });
-                    setNewProductImage(null);
-                },
-            }
-        );
+        router.post('/Products', form, {
+            preserveScroll: true,
+            forceFormData: true,
+            onSuccess: () => {
+                setIsAddProductOpen(false);
+                setNewProduct({
+                    sku: '',
+                    barcode_value: '',
+                    unit_of_measure: 'pc',
+                    brand: '',
+                    color: '',
+                    name: '',
+                    description: '',
+                    category: '',
+                    price: 0,
+                    stock: 0,
+                    restocking_level: 0,
+                    image_path: null,
+                    status: 'reserved',
+                });
+                setNewProductImage(null);
+            },
+        });
     };
 
     const onUpdateProduct = () => {
@@ -1082,31 +1076,6 @@ export default function Products() {
 
                                 <div className="grid gap-3 max-h-[70vh] overflow-auto pr-1">
                                     <div className="space-y-1">
-                                        <label className="text-xs font-medium text-muted-foreground">Status</label>
-                                        <Select
-                                            value={String(editProduct.status ?? 'reserved')}
-                                            onValueChange={(value) =>
-                                                setEditProduct((p) =>
-                                                    p
-                                                        ? {
-                                                            ...p,
-                                                            status: value as Product['status'],
-                                                        }
-                                                        : p
-                                                )
-                                            }
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select status" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="out_of_stock">Out of stock</SelectItem>
-                                                <SelectItem value="reserved">Reserved</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-
-                                    <div className="space-y-1">
                                         <label className="text-xs font-medium text-muted-foreground">Category</label>
                                         <Select
                                             value={editProduct.category ?? ''}
@@ -1434,14 +1403,15 @@ export default function Products() {
                             }
                         }}
                     >
-                        <DialogContent className="sm:max-w-6xl">
+                        <DialogContent className="!w-[86vw] sm:!max-w-6xl max-h-[90svh] overflow-hidden flex flex-col">
                             <DialogHeader>
                                 <DialogTitle>Add Product</DialogTitle>
                                 <DialogDescription>Fill in the product details to add it to the catalog.</DialogDescription>
                             </DialogHeader>
 
-                            <div className="grid gap-4 lg:grid-cols-3 max-h-[80vh] overflow-y-auto pr-1">
-                                <div className="rounded-lg border bg-card p-5">
+                            <div className="flex-1 overflow-y-auto pr-1">
+                                <div className="grid gap-4 lg:grid-cols-3">
+                                    <div className="rounded-lg border bg-card p-5">
                                     <div className="flex items-center justify-between">
                                         <div>
                                             <div className="text-sm font-semibold">Product Image</div>
@@ -1492,146 +1462,110 @@ export default function Products() {
                                         </div>
 
                                         <div className="mt-4 grid gap-3">
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div className="space-y-1">
-                                                    <label className="text-xs font-medium text-muted-foreground">Status</label>
-                                                    <Select
-                                                        value={String(newProduct.status ?? 'reserved')}
-                                                        onValueChange={(value) =>
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-medium text-muted-foreground">Category</label>
+                                                <Select
+                                                    value={newProduct.category}
+                                                    onValueChange={(value: any) => setNewProduct((p) => ({ ...p, category: value }))}
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="Select category" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {categories.filter((c) => c !== 'All').map((c) => (
+                                                            <SelectItem key={c} value={c}>
+                                                                {c}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-medium text-muted-foreground">
+                                                    SKU <span className="text-destructive">*</span>
+                                                </label>
+                                                <div className="flex items-center gap-2">
+                                                    <Input
+                                                        value={newProduct.sku}
+                                                        onChange={(e) => setNewProduct((p) => ({ ...p, sku: e.target.value }))}
+                                                    />
+                                                    <Button type="button" variant="outline" size="sm" onClick={generateSku} className="shrink-0">
+                                                        Auto
+                                                    </Button>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-medium text-muted-foreground">
+                                                    Product name <span className="text-destructive">*</span>
+                                                </label>
+                                                <Input
+                                                    value={newProduct.name}
+                                                    onChange={(e) => setNewProduct((p) => ({ ...p, name: e.target.value }))}
+                                                />
+                                            </div>
+
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-medium text-muted-foreground">Barcode</label>
+                                                <div className="flex items-center gap-2">
+                                                    <Input
+                                                        value={String(newProduct.barcode_value ?? '')}
+                                                        onChange={(e) => setNewProduct((p) => ({ ...p, barcode_value: e.target.value }))}
+                                                        placeholder="Auto / scan"
+                                                    />
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() =>
                                                             setNewProduct((p) => ({
                                                                 ...p,
-                                                                status: value as Product['status'],
+                                                                barcode_value: generateBarcodeValue(p.sku),
                                                             }))
                                                         }
+                                                        className="shrink-0"
                                                     >
-                                                        <SelectTrigger>
-                                                            <SelectValue placeholder="Select status" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="reserved">In stock</SelectItem>
-                                                            <SelectItem value="out_of_stock">Out of stock</SelectItem>                                         
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
-
-                                                <div className="space-y-1">
-                                                    <label className="text-xs font-medium text-muted-foreground">Category</label>
-                                                    <Select
-                                                        value={newProduct.category}
-                                                        onValueChange={(value: any) => setNewProduct((p) => ({ ...p, category: value }))}
-                                                    >
-                                                        <SelectTrigger>
-                                                            <SelectValue placeholder="Select category" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {categories.filter((c) => c !== 'All').map((c) => (
-                                                                <SelectItem key={c} value={c}>
-                                                                    {c}
-                                                                </SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
+                                                        Generate
+                                                    </Button>
                                                 </div>
                                             </div>
 
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div className="space-y-1">
-                                                    <label className="text-xs font-medium text-muted-foreground">
-                                                        SKU <span className="text-destructive">*</span>
-                                                    </label>
-                                                    <div className="flex items-center gap-2">
-                                                        <Input
-                                                            value={newProduct.sku}
-                                                            onChange={(e) => setNewProduct((p) => ({ ...p, sku: e.target.value }))}
-                                                        />
-                                                        <Button type="button" variant="outline" size="sm" onClick={generateSku} className="shrink-0">
-                                                            Auto
-                                                        </Button>
-                                                    </div>
-                                                </div>
-
-                                                <div className="space-y-1">
-                                                    <label className="text-xs font-medium text-muted-foreground">
-                                                        Product name <span className="text-destructive">*</span>
-                                                    </label>
-                                                    <Input
-                                                        value={newProduct.name}
-                                                        onChange={(e) => setNewProduct((p) => ({ ...p, name: e.target.value }))}
-                                                    />
-                                                </div>
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-medium text-muted-foreground">Unit of Measure</label>
+                                                <Select
+                                                    value={String(newProduct.unit_of_measure ?? 'pc')}
+                                                    onValueChange={(value) => setNewProduct((p) => ({ ...p, unit_of_measure: value }))}
+                                                >
+                                                    <SelectTrigger>
+                                                        <SelectValue placeholder="Select UoM" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {uomOptions.map((u) => (
+                                                            <SelectItem key={u} value={u}>
+                                                                {u}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
                                             </div>
 
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div className="space-y-1">
-                                                    <label className="text-xs font-medium text-muted-foreground">Barcode</label>
-                                                    <div className="flex items-center gap-2">
-                                                        <Input
-                                                            value={String(newProduct.barcode_value ?? '')}
-                                                            onChange={(e) =>
-                                                                setNewProduct((p) => ({ ...p, barcode_value: e.target.value }))
-                                                            }
-                                                            placeholder="Auto / scan"
-                                                        />
-                                                        <Button
-                                                            type="button"
-                                                            variant="outline"
-                                                            size="sm"
-                                                            onClick={() =>
-                                                                setNewProduct((p) => ({
-                                                                    ...p,
-                                                                    barcode_value: generateBarcodeValue(p.sku),
-                                                                }))
-                                                            }
-                                                            className="shrink-0"
-                                                        >
-                                                            Generate
-                                                        </Button>
-                                                    </div>
-                                                </div>
-
-                                                <div className="space-y-1">
-                                                    <label className="text-xs font-medium text-muted-foreground">Unit of Measure</label>
-                                                    <Select
-                                                        value={String(newProduct.unit_of_measure ?? 'pc')}
-                                                        onValueChange={(value) =>
-                                                            setNewProduct((p) => ({ ...p, unit_of_measure: value }))
-                                                        }
-                                                    >
-                                                        <SelectTrigger>
-                                                            <SelectValue placeholder="Select UoM" />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            {uomOptions.map((u) => (
-                                                                <SelectItem key={u} value={u}>
-                                                                    {u}
-                                                                </SelectItem>
-                                                            ))}
-                                                        </SelectContent>
-                                                    </Select>
-                                                </div>
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-medium text-muted-foreground">Brand</label>
+                                                <Input
+                                                    value={String(newProduct.brand ?? '')}
+                                                    onChange={(e) => setNewProduct((p) => ({ ...p, brand: e.target.value }))}
+                                                    placeholder="e.g. Bosch"
+                                                />
                                             </div>
 
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div className="space-y-1">
-                                                    <label className="text-xs font-medium text-muted-foreground">Brand</label>
-                                                    <Input
-                                                        value={String(newProduct.brand ?? '')}
-                                                        onChange={(e) =>
-                                                            setNewProduct((p) => ({ ...p, brand: e.target.value }))
-                                                        }
-                                                        placeholder="e.g. Bosch"
-                                                    />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <label className="text-xs font-medium text-muted-foreground">Color</label>
-                                                    <Input
-                                                        value={String(newProduct.color ?? '')}
-                                                        onChange={(e) =>
-                                                            setNewProduct((p) => ({ ...p, color: e.target.value }))
-                                                        }
-                                                        placeholder="e.g. Black"
-                                                    />
-                                                </div>
+                                            <div className="space-y-1">
+                                                <label className="text-xs font-medium text-muted-foreground">Color</label>
+                                                <Input
+                                                    value={String(newProduct.color ?? '')}
+                                                    onChange={(e) => setNewProduct((p) => ({ ...p, color: e.target.value }))}
+                                                    placeholder="e.g. Black"
+                                                />
                                             </div>
 
                                         </div>
@@ -1701,6 +1635,7 @@ export default function Products() {
                                             />
                                         </div>
                                     </div>
+                                </div>
                                 </div>
                             </div>
 

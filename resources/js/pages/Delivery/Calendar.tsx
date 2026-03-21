@@ -59,9 +59,12 @@ const toIsoDateTime = (raw: string) => {
     return s.replace(' ', 'T');
 };
 
-function statusBadge(status: DeliveryStatus) {
-    if (status === 'preparing') {
-        return (
+function statusBadge(d: DeliveryRow) {
+    const isDelayed = d.scheduled_for && new Date(d.scheduled_for) < new Date() && d.status !== 'delivered';
+
+    let badge;
+    if (d.status === 'preparing') {
+        badge = (
             <Badge
                 variant="secondary"
                 className="bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/30 dark:text-amber-200 dark:border-amber-800"
@@ -69,9 +72,8 @@ function statusBadge(status: DeliveryStatus) {
                 Preparing
             </Badge>
         );
-    }
-    if (status === 'out_for_delivery') {
-        return (
+    } else if (d.status === 'out_for_delivery') {
+        badge = (
             <Badge
                 variant="secondary"
                 className="bg-sky-50 text-sky-800 border-sky-200 dark:bg-sky-950/30 dark:text-sky-200 dark:border-sky-800"
@@ -79,15 +81,32 @@ function statusBadge(status: DeliveryStatus) {
                 Out
             </Badge>
         );
+    } else {
+        badge = (
+            <Badge
+                variant="secondary"
+                className="bg-green-50 text-green-800 border-green-200 dark:bg-green-950/30 dark:text-green-200 dark:border-green-800"
+            >
+                Delivered
+            </Badge>
+        );
     }
-    return (
-        <Badge
-            variant="secondary"
-            className="bg-green-50 text-green-800 border-green-200 dark:bg-green-950/30 dark:text-green-200 dark:border-green-800"
-        >
-            Delivered
-        </Badge>
-    );
+
+    if (isDelayed) {
+        return (
+            <div className="flex items-center gap-1.5 flex-wrap">
+                <Badge
+                    variant="secondary"
+                    className="bg-red-50 text-red-800 border-red-200 dark:bg-red-950/30 dark:text-red-200 dark:border-red-800"
+                >
+                    Delayed
+                </Badge>
+                {badge}
+            </div>
+        );
+    }
+
+    return badge;
 }
 
 const statusColor = (s: DeliveryStatus) => {
@@ -168,6 +187,33 @@ export default function Calendar() {
     }, [fetchData]);
 
     useEffect(() => {
+        if (!data) return;
+        const params = new URLSearchParams(window.location.search);
+        const rawDeliveryId = params.get('delivery_id');
+        if (!rawDeliveryId) return;
+
+        const targetId = Number(rawDeliveryId);
+        if (!Number.isFinite(targetId)) return;
+
+        const allDeliveries = [...data.scheduled, ...data.unscheduled];
+        const match = allDeliveries.find((d) => d.id === targetId);
+
+        if (match) {
+            setDetailsDelivery(match);
+            setIsDetailsOpen(true);
+            setProofPhoto(null);
+            if (match.scheduled_for) {
+                setSelectedDay(match.scheduled_for.slice(0, 10));
+            }
+
+            params.delete('delivery_id');
+            const nextQuery = params.toString();
+            const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`;
+            window.history.replaceState(null, '', nextUrl);
+        }
+    }, [data]);
+
+    useEffect(() => {
         const mql = window.matchMedia('(max-width: 640px)');
         const update = () => setIsMobile(mql.matches);
         update();
@@ -194,9 +240,19 @@ export default function Calendar() {
                 );
             }
 
+            const color = String(arg?.event?.backgroundColor || '#16a34a');
+            const rawTitle = String(arg?.event?.title ?? '');
+            const ref = rawTitle.split('\n')[0] || rawTitle;
+
             return (
                 <div className="truncate text-[11px] leading-4">
-                    {String(arg?.event?.title ?? '')}
+                    <span
+                        className="inline-flex max-w-full items-center truncate rounded-md px-1.5 py-0.5 text-[10px] font-semibold"
+                        style={{ backgroundColor: color, color: '#fff' }}
+                        title={rawTitle}
+                    >
+                        {ref}
+                    </span>
                 </div>
             );
         },
@@ -499,7 +555,7 @@ export default function Calendar() {
                                                         <div className="min-w-0 flex-1">
                                                             <div className="flex flex-wrap items-center gap-2">
                                                                 <div className="font-medium">{d.ref}</div>
-                                                                {statusBadge(d.status)}
+                                                                {statusBadge(d)}
                                                             </div>
                                                             <div className="mt-1 text-xs text-muted-foreground line-clamp-2">
                                                                 {d.customer_name} • {d.address}
@@ -530,25 +586,60 @@ export default function Calendar() {
                     }
                 }}
             >
-                <DialogContent>
+                <DialogContent className="sm:max-w-3xl">
                     <DialogHeader>
                         <DialogTitle>Delivery Details</DialogTitle>
                         <DialogDescription>{detailsDelivery ? detailsDelivery.ref : ''}</DialogDescription>
                     </DialogHeader>
 
                     {detailsDelivery && (
-                        <div className="space-y-3 text-sm">
-                            <div><span className="font-medium">Customer:</span> {detailsDelivery.customer_name}</div>
-                            <div><span className="font-medium">Address:</span> {detailsDelivery.address}</div>
-                            <div><span className="font-medium">Scheduled:</span> {detailsDelivery.scheduled_for ? formatDateTime(detailsDelivery.scheduled_for) : '—'}</div>
-                            <div><span className="font-medium">Items:</span> {detailsDelivery.items}</div>
-                            <div><span className="font-medium">Total:</span> {peso(detailsDelivery.delivery_total)}</div>
+                        <div className="grid gap-6 md:grid-cols-2 text-sm mt-2">
+                            <div className="space-y-5 rounded-md border p-5 bg-card shadow-sm h-full relative">
+                                <div>
+                                    <div className="font-semibold text-muted-foreground text-xs uppercase mb-1">Customer Name</div> 
+                                    <div className="text-base">{detailsDelivery.customer_name}</div>
+                                </div>
+                                <div className="absolute top-5 right-5">{statusBadge(detailsDelivery)}</div>
+                                <div>
+                                    <div className="font-semibold text-muted-foreground text-xs uppercase mb-1">Address</div> 
+                                    <div>{detailsDelivery.address}</div>
+                                </div>
+                                <div>
+                                    <div className="font-semibold text-muted-foreground text-xs uppercase mb-1">Scheduled For</div> 
+                                    <div className="text-sm font-medium">{detailsDelivery.scheduled_for ? formatDateTime(detailsDelivery.scheduled_for) : '—'}</div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4 pt-1 border-t">
+                                    <div>
+                                        <div className="font-semibold text-muted-foreground text-xs uppercase mb-1">Items Count</div> 
+                                        <div className="text-base">{detailsDelivery.items}</div>
+                                    </div>
+                                    <div>
+                                        <div className="font-semibold text-muted-foreground text-xs uppercase mb-1">Total Amount</div> 
+                                        <div className="text-base font-semibold">{peso(detailsDelivery.delivery_total)}</div>
+                                    </div>
+                                </div>
+                            </div>
 
-                            <div className="rounded-md border p-3">
-                                <div className="text-sm font-medium">Proof of Delivery Photo</div>
-                                <div className="mt-1 text-xs text-muted-foreground">Required before marking as delivered.</div>
+                            <div className="rounded-md border p-5 bg-muted/10 h-full flex flex-col justify-between">
+                                <div>
+                                    <div className="text-sm font-semibold mb-1">Proof of Delivery Photo</div>
+                                    <div className="text-xs text-muted-foreground mb-4">A photo is required before marking this delivery as completed.</div>
 
-                                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                                    <div className="rounded-md border bg-muted/40 p-1 relative h-44 mb-4">
+                                        {proofPhotoPreview ? (
+                                            <img
+                                                src={proofPhotoPreview}
+                                                alt="Proof of delivery preview"
+                                                className="h-full w-full rounded object-cover"
+                                            />
+                                        ) : (
+                                            <div className="flex flex-col gap-2 h-full items-center justify-center text-xs text-muted-foreground">
+                                                <span>Image Preview</span>
+                                                <span className="text-[10px] opacity-70">Capture or select an image</span>
+                                            </div>
+                                        )}
+                                    </div>
+
                                     <div className="space-y-2">
                                         <input
                                             ref={proofInputRef}
@@ -565,6 +656,7 @@ export default function Calendar() {
                                             <Button
                                                 type="button"
                                                 variant="outline"
+                                                className="flex-1"
                                                 onClick={() => proofInputRef.current?.click()}
                                             >
                                                 Take / Upload Photo
@@ -572,30 +664,15 @@ export default function Calendar() {
                                             {proofPhoto && (
                                                 <Button
                                                     type="button"
-                                                    variant="outline"
+                                                    variant="destructive"
                                                     onClick={() => setProofPhoto(null)}
                                                 >
                                                     Remove
                                                 </Button>
                                             )}
                                         </div>
-                                        {proofPhoto ? (
-                                            <div className="text-xs text-muted-foreground">Selected: {proofPhoto.name}</div>
-                                        ) : (
-                                            <div className="text-xs text-muted-foreground">No photo selected.</div>
-                                        )}
-                                    </div>
-                                    <div className="rounded-md border bg-muted/20 p-2">
-                                        {proofPhotoPreview ? (
-                                            <img
-                                                src={proofPhotoPreview}
-                                                alt="Proof of delivery preview"
-                                                className="h-28 w-full rounded object-cover"
-                                            />
-                                        ) : (
-                                            <div className="flex h-28 items-center justify-center text-xs text-muted-foreground">
-                                                Preview
-                                            </div>
+                                        {proofPhoto && (
+                                            <div className="text-xs text-center mt-1 text-muted-foreground truncate px-2">Selected: {proofPhoto.name}</div>
                                         )}
                                     </div>
                                 </div>
@@ -605,8 +682,46 @@ export default function Calendar() {
 
                     <DialogFooter className="justify-between sm:justify-between">
                         <div className="flex gap-2">
-                            {detailsDelivery && (
+                            {detailsDelivery ? (() => {
+                                const now = new Date();
+                                const isDelayed = detailsDelivery.scheduled_for && new Date(detailsDelivery.scheduled_for) < now && detailsDelivery.status !== 'delivered';
+                                
+                                return (
                                 <>
+                                    {isDelayed && (
+                                        <Button
+                                            variant="outline"
+                                            className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                                            onClick={async () => {
+                                                const tmr = new Date();
+                                                tmr.setDate(tmr.getDate() + 1);
+                                                tmr.setHours(9, 0, 0, 0);
+                                                try {
+                                                    const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                                                    const res = await fetch('/delivery/calendar/schedule', {
+                                                        method: 'POST',
+                                                        headers: {
+                                                            'Accept': 'application/json',
+                                                            'Content-Type': 'application/json',
+                                                            'X-CSRF-TOKEN': csrf,
+                                                            'X-Requested-With': 'XMLHttpRequest',
+                                                        },
+                                                        body: JSON.stringify({
+                                                            delivery_id: detailsDelivery.id,
+                                                            scheduled_for: tmr.toISOString(),
+                                                        }),
+                                                    });
+                                                    if (!res.ok) throw new Error();
+                                                    setIsDetailsOpen(false);
+                                                    fetchData();
+                                                } catch {
+                                                    setError('Failed to reschedule');
+                                                }
+                                            }}
+                                        >
+                                            Reschedule (Tmrw)
+                                        </Button>
+                                    )}
                                     <Button variant="outline" onClick={() => setDeliveryStatus(detailsDelivery.id, 'preparing').catch(() => null)}>
                                         Preparing
                                     </Button>
@@ -628,7 +743,8 @@ export default function Calendar() {
                                         Delivered
                                     </Button>
                                 </>
-                            )}
+                                );
+                            })() : null}
                         </div>
                         <Button variant="outline" onClick={() => setIsDetailsOpen(false)}>
                             Close

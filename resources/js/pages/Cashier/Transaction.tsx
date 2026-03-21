@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Calendar, FileDown, FileText, PhilippinePeso, Printer, LayoutGrid, List } from 'lucide-react';
+import { Calendar, FileDown, FileText, PhilippinePeso, Printer, LayoutGrid, List, MoreHorizontal } from 'lucide-react';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -602,9 +602,12 @@ export default function Transaction() {
                                                 tabIndex={0}
                                                 onClick={() => openPreview(s)}
                                                 onKeyDown={(e) => {
-                                                    if (e.key === 'Enter' || e.key === ' ') openPreview(s);
+                                                    if (e.key === 'Enter' || e.key === ' ') {
+                                                        e.preventDefault();
+                                                        openPreview(s);
+                                                    }
                                                 }}
-                                                className="cursor-pointer"
+                                                className="cursor-pointer hover:bg-muted/50"
                                             >
                                                 <TableCell className="font-medium">{s.ref}</TableCell>
                                                 <TableCell className="text-muted-foreground">{formatDateTime(s.created_at)}</TableCell>
@@ -624,19 +627,32 @@ export default function Transaction() {
                                                     )}
                                                 </TableCell>
                                                 <TableCell className="text-right">
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={(e) => {
-                                                            e.preventDefault();
-                                                            e.stopPropagation();
-                                                            openPreview(s);
-                                                        }}
-                                                    >
-                                                        <FileText className="mr-2 h-4 w-4" />
-                                                        View
-                                                    </Button>
+                                                    <DropdownMenu>
+                                                        <DropdownMenuTrigger asChild>
+                                                            <button
+                                                                type="button"
+                                                                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    e.stopPropagation();
+                                                                }}
+                                                            >
+                                                                <MoreHorizontal className="h-4 w-4" />
+                                                            </button>
+                                                        </DropdownMenuTrigger>
+                                                        <DropdownMenuContent align="end" className="w-44">
+                                                            <DropdownMenuItem
+                                                                onClick={(e) => {
+                                                                    e.preventDefault();
+                                                                    e.stopPropagation();
+                                                                    openPreview(s);
+                                                                }}
+                                                            >
+                                                                <FileText className="mr-2 h-4 w-4" />
+                                                                View
+                                                            </DropdownMenuItem>
+                                                        </DropdownMenuContent>
+                                                    </DropdownMenu>
                                                 </TableCell>
                                             </TableRow>
                                         ))}
@@ -653,7 +669,10 @@ export default function Transaction() {
                                             tabIndex={0}
                                             onClick={() => openPreview(s)}
                                             onKeyDown={(e) => {
-                                                if (e.key === 'Enter' || e.key === ' ') openPreview(s);
+                                                if (e.key === 'Enter' || e.key === ' ') {
+                                                    e.preventDefault();
+                                                    openPreview(s);
+                                                }
                                             }}
                                             className="group cursor-pointer rounded-xl border bg-background p-4 transition-colors hover:bg-muted/30 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                                         >
@@ -679,20 +698,32 @@ export default function Transaction() {
                                                         </div>
                                                     )}
                                                 </div>
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={(e) => {
-                                                        e.preventDefault();
-                                                        e.stopPropagation();
-                                                        openPreview(s);
-                                                    }}
-                                                    className="shrink-0"
-                                                >
-                                                    <FileText className="mr-2 h-4 w-4" />
-                                                    View
-                                                </Button>
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger asChild>
+                                                        <button
+                                                            type="button"
+                                                            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                            }}
+                                                        >
+                                                            <MoreHorizontal className="h-4 w-4" />
+                                                        </button>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end" className="w-44">
+                                                        <DropdownMenuItem
+                                                            onClick={(e) => {
+                                                                e.preventDefault();
+                                                                e.stopPropagation();
+                                                                openPreview(s);
+                                                            }}
+                                                        >
+                                                            <FileText className="mr-2 h-4 w-4" />
+                                                            View
+                                                        </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
                                             </div>
 
                                             <div className="mt-4 border-t pt-3 text-xs text-muted-foreground">

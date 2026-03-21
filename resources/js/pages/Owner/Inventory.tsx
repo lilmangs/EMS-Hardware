@@ -203,6 +203,42 @@ export default function Inventory() {
         fetchItems();
     }, [fetchItems]);
 
+    useEffect(() => {
+        if (!canRestock) return;
+        if (items.length === 0) return;
+        if (restockItem) return;
+
+        const params = new URLSearchParams(window.location.search);
+        const rawProductId = params.get('restock_product_id');
+        if (!rawProductId) return;
+
+        const targetProductId = Number(rawProductId);
+        if (!Number.isFinite(targetProductId)) return;
+
+        const rawBranchKey = params.get('branch_key');
+        const targetBranchKey =
+            rawBranchKey === 'lagonglong' || rawBranchKey === 'balingasag' ? (rawBranchKey as InventoryItem['branchKey']) : null;
+
+        const match = items.find((it) => {
+            if (it.productId !== targetProductId) return false;
+            if (targetBranchKey && it.branchKey !== targetBranchKey) return false;
+            return true;
+        });
+
+        if (!match) return;
+        if (isBranchRestrictedUser && userBranchKey && match.branchKey !== userBranchKey) return;
+
+        setRestockItem(match);
+        setRestockQty(1);
+        setActionError('');
+
+        params.delete('restock_product_id');
+        params.delete('branch_key');
+        const nextQuery = params.toString();
+        const nextUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash}`;
+        window.history.replaceState(null, '', nextUrl);
+    }, [canRestock, isBranchRestrictedUser, items, restockItem, userBranchKey]);
+
     const applyManualRestock = () => {
         if (!restockItem) return;
         const qty = Math.max(1, Number(restockQty) || 1);

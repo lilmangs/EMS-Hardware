@@ -252,7 +252,15 @@ class InventoryController extends Controller
             ->where('product_id', $product->id)
             ->sum('stock');
 
-        $product->update(['stock' => $total]);
+        $nextStatus = $product->status;
+        if ($product->status !== 'defective') {
+            $nextStatus = $total > 0 ? 'reserved' : 'out_of_stock';
+        }
+
+        $product->update([
+            'stock' => $total,
+            'status' => $nextStatus,
+        ]);
     }
 
 
