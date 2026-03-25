@@ -12,14 +12,18 @@ class PosSaleItem extends Model
         'product_id',
         'name',
         'price',
+        'purchase_cost',
         'qty',
         'line_total',
+        'line_cost',
     ];
 
     protected $casts = [
         'price' => 'decimal:2',
+        'purchase_cost' => 'decimal:2',
         'qty' => 'integer',
         'line_total' => 'decimal:2',
+        'line_cost' => 'decimal:2',
     ];
 
     public function sale(): BelongsTo

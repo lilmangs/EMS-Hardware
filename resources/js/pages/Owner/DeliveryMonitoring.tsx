@@ -584,122 +584,149 @@ export default function DeliveryMonitoring() {
                 </Card>
             </div>
 
-            <Dialog open={!!selectedDelivery} onOpenChange={(open) => { if (!open) setSelectedDelivery(null); }}>
-                <DialogContent className="sm:max-w-4xl">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center justify-between gap-3">
-                            <span>Delivery Details</span>
-                            {selectedDelivery ? statusBadge(selectedDelivery.status) : null}
-                        </DialogTitle>
-                        <DialogDescription>
-                            {selectedDelivery ? `Delivery ${selectedDelivery.id} • ${selectedDelivery.branch}` : ''}
-                        </DialogDescription>
+            <Dialog 
+                open={!!selectedDelivery} 
+                onOpenChange={(open) => { if (!open) setSelectedDelivery(null); }}
+            >
+                <DialogContent className="sm:max-w-4xl p-0 overflow-hidden border-none shadow-2xl">
+                    <DialogHeader className="bg-orange-600/30 dark:bg-orange-900/20 p-6 border-b border-orange-100/50 dark:border-orange-900/30">
+                        <div className="flex items-center justify-between">
+                            <div className="space-y-1">
+                                <DialogTitle className="flex items-center gap-2 text-2xl font-bold text-orange-950 dark:text-orange-100">
+                                    <Truck className="h-6 w-6 text-orange-600" /> Delivery Details
+                                </DialogTitle>
+                                <DialogDescription className="text-orange-800/70 dark:text-orange-200/60">
+                                    Real-time tracking and fulfillment monitoring.
+                                </DialogDescription>
+                            </div>
+                            {selectedDelivery && statusBadge(selectedDelivery.status)}
+                        </div>
                     </DialogHeader>
 
-                    {selectedDelivery && (
-                        <div className="grid gap-4 md:grid-cols-2">
-                            <div className="space-y-4">
-                                <div className="rounded-lg border p-3">
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div className="min-w-0">
-                                            <div className="text-sm text-muted-foreground">Order</div>
-                                            <div className="mt-1 flex items-center gap-2">
-                                                <Hash className="h-4 w-4 text-muted-foreground" />
-                                                <span className="font-semibold">{selectedDelivery.order_id}</span>
-                                            </div>
-                                            <div className="mt-2 text-sm text-muted-foreground">Customer</div>
-                                            <div className="mt-1 truncate font-medium">{selectedDelivery.customer}</div>
+                    {!selectedDelivery ? (
+                        <div className="flex h-64 items-center justify-center text-muted-foreground italic">
+                            No delivery selected.
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 h-[450px]">
+                            {/* Order & Customer Information */}
+                            <div className="bg-orange-50/20 dark:bg-orange-950/5 p-8 border-r border-orange-100/30 flex flex-col space-y-8 overflow-y-auto">
+                                <div className="space-y-6">
+                                    <div className="flex items-center gap-4">
+                                        <div className="h-14 w-14 rounded-2xl bg-orange-100 dark:bg-orange-900/40 flex items-center justify-center text-orange-600 shadow-sm border border-orange-200/50">
+                                            <Package className="h-7 w-7" />
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] uppercase font-bold text-orange-600/70 tracking-widest leading-none mb-1">Order Reference</p>
+                                            <h3 className="text-xl font-black text-orange-950 dark:text-orange-100">
+                                                #{selectedDelivery.order_id}
+                                            </h3>
+                                        </div>
+                                    </div>
+
+                                    <div className="p-4 rounded-2xl bg-white dark:bg-black/20 border border-orange-100/50 shadow-sm space-y-4">
+                                        <div>
+                                            <p className="text-[10px] font-bold text-muted-foreground uppercase flex items-center gap-1.5 mb-1.5">
+                                                <Store className="h-3 w-3" /> Branch Origin
+                                            </p>
+                                            <p className="text-sm font-semibold">{selectedDelivery.branch}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-bold text-muted-foreground uppercase flex items-center gap-1.5 mb-1.5">
+                                                <MapPin className="h-3 w-3" /> Destination Address
+                                            </p>
+                                            <p className="text-sm font-medium leading-relaxed">{selectedDelivery.address}</p>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="rounded-lg border p-3">
-                                    <div className="flex items-start gap-2">
-                                        <MapPin className="mt-0.5 h-4 w-4 text-muted-foreground" />
-                                        <div className="min-w-0">
-                                            <div className="text-sm font-medium">Delivery Address</div>
-                                            <div className="mt-1 text-sm text-muted-foreground break-words">{selectedDelivery.address}</div>
-                                        </div>
+                                <div className="mt-auto grid grid-cols-2 gap-3">
+                                    <div className="p-3 rounded-xl bg-orange-100/30 border border-orange-200/50">
+                                        <p className="text-[10px] font-bold text-orange-700 uppercase leading-none mb-1 text-center">Items</p>
+                                        <p className="text-xl font-black text-center tabular-nums">{selectedDelivery.items}</p>
                                     </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div className="rounded-lg border p-3">
-                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                            <Boxes className="h-4 w-4" />
-                                            Items
-                                        </div>
-                                        <div className="mt-1 text-lg font-semibold">{selectedDelivery.items}</div>
-                                    </div>
-                                    <div className="rounded-lg border p-3">
-                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                            <PhilippinePeso className="h-4 w-4" />
-                                            Total
-                                        </div>
-                                        <div className="mt-1 text-lg font-semibold">{peso(selectedDelivery.total)}</div>
-                                    </div>
-                                    <div className="rounded-lg border p-3">
-                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                            <Clock className="h-4 w-4" />
-                                            Scheduled/Started
-                                        </div>
-                                        <div className="mt-1 text-sm font-medium">
-                                            {formatReadableDateTime(selectedDelivery.started_at)}
-                                        </div>
-                                    </div>
-                                    <div className="rounded-lg border p-3">
-                                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                            <Store className="h-4 w-4" />
-                                            Branch
-                                        </div>
-                                        <div className="mt-1 text-sm font-medium">{selectedDelivery.branch}</div>
+                                    <div className="p-3 rounded-xl bg-muted/30 border border-muted shadow-sm">
+                                        <p className="text-[10px] font-bold text-muted-foreground uppercase leading-none mb-1 text-center">Total Amount</p>
+                                        <p className="text-xl font-black text-center tabular-nums">{peso(selectedDelivery.total)}</p>
                                     </div>
                                 </div>
                             </div>
 
-                            <div className="space-y-4">
-                                <div className="rounded-lg border p-3">
-                                    <div className="flex items-center justify-between gap-3">
-                                        <div className="text-xs text-muted-foreground">Proof of Delivery</div>
-                                        <div className="text-xs text-muted-foreground">
-                                            {selectedDelivery.proof_photo_url ? 'Uploaded' : 'Awaiting upload'}
+                            {/* Logistics & Proof of Delivery */}
+                            <div className="p-8 space-y-8 overflow-y-auto">
+                                <section className="space-y-4">
+                                    <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                                        <Clock className="h-3 w-3 text-blue-500" /> Fulfillment Timeline
+                                    </h4>
+                                    <div className="p-4 rounded-2xl bg-muted/30 border border-dashed border-muted-foreground/30 flex items-center justify-between">
+                                        <div>
+                                            <p className="text-[10px] font-bold text-muted-foreground uppercase">Started At</p>
+                                            <p className="text-sm font-bold tabular-nums">
+                                                {formatReadableDateTime(selectedDelivery.started_at)}
+                                            </p>
                                         </div>
+                                        <Button 
+                                            variant="ghost" 
+                                            size="sm" 
+                                            className="text-[10px] font-bold uppercase tracking-tighter"
+                                            onClick={fetchData}
+                                        >
+                                            <RefreshCcw className="h-3 w-3 mr-1" /> Sync
+                                        </Button>
                                     </div>
-                                    <div className="mt-2 overflow-hidden rounded-md border bg-muted/20">
+                                </section>
+
+                                <section className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                                            <CheckCircle2 className="h-3 w-3 text-green-500" /> Proof of Delivery
+                                        </h4>
+                                        {selectedDelivery.proof_photo_url && (
+                                            <Badge variant="outline" className="text-[10px] h-5 bg-green-50 text-green-700 border-green-200">
+                                                Verified
+                                            </Badge>
+                                        )}
+                                    </div>
+
+                                    <div className="group relative aspect-video rounded-2xl overflow-hidden border-2 border-muted hover:border-orange-200 transition-all duration-300 shadow-sm bg-muted/10">
                                         {selectedDelivery.proof_photo_url ? (
-                                            <img
-                                                src={selectedDelivery.proof_photo_url}
-                                                alt="Proof of delivery"
-                                                className="w-full max-h-96 cursor-zoom-in object-cover"
-                                                onClick={() => setProofViewerUrl(selectedDelivery.proof_photo_url || '')}
-                                            />
-                                        ) : (
-                                            <div className="flex max-h-96 min-h-32 flex-col items-center justify-center gap-2 p-6 text-center">
-                                                <div className="text-sm font-medium">No proof photo yet</div>
-                                                <div className="text-xs text-muted-foreground">
-                                                    This will appear once the delivery staff uploads the proof of delivery photo.
+                                            <>
+                                                <img
+                                                    src={selectedDelivery.proof_photo_url}
+                                                    alt="Proof of delivery"
+                                                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                                                />
+                                                <div 
+                                                    className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-zoom-in"
+                                                    onClick={() => setProofViewerUrl(selectedDelivery.proof_photo_url || '')}
+                                                >
+                                                    <span className="text-white text-xs font-bold uppercase tracking-widest flex items-center gap-2">
+                                                        <Eye className="h-4 w-4" /> Expand View
+                                                    </span>
                                                 </div>
+                                            </>
+                                        ) : (
+                                            <div className="h-full flex flex-col items-center justify-center p-6 text-center animate-pulse">
+                                                <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-3">
+                                                    <Package className="h-6 w-6 text-muted-foreground/40" />
+                                                </div>
+                                                <p className="text-xs font-bold text-muted-foreground/60 uppercase tracking-tighter">Awaiting Rider Upload</p>
+                                                <p className="text-[9px] text-muted-foreground/40 mt-1 max-w-[180px]">Proof will appear automatically upon delivery confirmation.</p>
                                             </div>
                                         )}
                                     </div>
-                                </div>
+                                </section>
                             </div>
                         </div>
                     )}
-
-                    <DialogFooter className="gap-2 sm:gap-2">
-                        <Button variant="outline" onClick={() => setSelectedDelivery(null)}>
-                            Close
-                        </Button>
-                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 
             <Dialog open={!!proofViewerUrl} onOpenChange={(open) => { if (!open) setProofViewerUrl(''); }}>
                 <DialogContent className="sm:max-w-5xl">
-                    <DialogHeader>
-                        <DialogTitle>Proof of Delivery</DialogTitle>
-                        <DialogDescription>Click outside to close.</DialogDescription>
+                    <DialogHeader className="bg-orange-600/30 dark:bg-orange-900/20 p-6 -mx-6 -mt-6 mb-6 border-b border-orange-100/50 dark:border-orange-900/30 rounded-t-lg">
+                        <DialogTitle className="text-orange-950 dark:text-orange-100">Proof of Delivery</DialogTitle>
+                        <DialogDescription className="text-orange-800/70 dark:text-orange-200/60">Large view of the uploaded delivery proof.</DialogDescription>
                     </DialogHeader>
 
                     {proofViewerUrl && (

@@ -45,14 +45,19 @@ class ProductsController extends Controller
         }
 
         if ($status === 'low_stock') {
+            // Align with Cashier Products UI: badge uses product.restocking_level when branch
+            // reorder_level is unset; use COALESCE so per-row reorder_level falls back to products.restocking_level.
             $query->whereHas('stocks', function ($q) use ($branchKey) {
                 if (is_string($branchKey) && $branchKey !== '') {
-                    $q->where('branch_key', $branchKey);
+                    $q->where('product_stocks.branch_key', $branchKey);
                 }
 
-                $q->whereRaw('(stock - COALESCE(defective_qty, 0)) > 0')
-                    ->where('reorder_level', '>', 0)
-                    ->whereRaw('(stock - COALESCE(defective_qty, 0)) <= reorder_level');
+                $sellable = '(product_stocks.stock - COALESCE(product_stocks.defective_qty, 0))';
+                $effectiveReorder = 'COALESCE(NULLIF(product_stocks.reorder_level, 0), (SELECT restocking_level FROM products WHERE products.id = product_stocks.product_id))';
+
+                $q->whereRaw("{$sellable} > 0")
+                    ->whereRaw("{$effectiveReorder} > 0")
+                    ->whereRaw("{$sellable} <= {$effectiveReorder}");
             });
         } elseif ($status === 'defective') {
             $query->whereHas('stocks', function ($q) use ($branchKey) {
@@ -134,6 +139,7 @@ class ProductsController extends Controller
             'description' => ['nullable', 'string'],
             'category' => ['nullable', 'string', 'max:255'],
             'price' => ['required', 'numeric', 'min:0'],
+            'purchase_cost' => ['required', 'numeric', 'min:0'],
             'stock' => ['required', 'integer', 'min:0'],
             'restocking_level' => ['nullable', 'integer', 'min:0'],
             'status' => ['nullable', Rule::in(['out_of_stock', 'reserved'])],
@@ -188,6 +194,7 @@ class ProductsController extends Controller
             'description' => ['nullable', 'string'],
             'category' => ['nullable', 'string', 'max:255'],
             'price' => ['required', 'numeric', 'min:0'],
+            'purchase_cost' => ['required', 'numeric', 'min:0'],
             'stock' => ['nullable', 'integer', 'min:0'],
             'restocking_level' => ['nullable', 'integer', 'min:0'],
             'status' => ['nullable', Rule::in(['out_of_stock', 'reserved'])],

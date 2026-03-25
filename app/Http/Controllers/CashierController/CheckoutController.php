@@ -38,7 +38,7 @@ class CheckoutController extends Controller
 
     $stocks = ProductStock::query()
       ->where('branch_key', $branchKey)
-      ->with(['product:id,sku,barcode_value,name,price,image_path'])
+      ->with(['product:id,sku,barcode_value,name,price,purchase_cost,image_path'])
       ->get();
 
     $products = $stocks
@@ -50,6 +50,7 @@ class CheckoutController extends Controller
           'barcode_value' => $ps->product?->barcode_value,
           'name' => $ps->product?->name,
           'price' => $ps->product?->price,
+          'purchase_cost' => $ps->product?->purchase_cost,
           'image_path' => $ps->product?->image_path,
           'stock' => $sellable,
         ];
@@ -210,8 +211,10 @@ class CheckoutController extends Controller
           'product_id' => $productId,
           'name' => $product?->name ?? ('Product #' . $productId),
           'price' => (float) ($product?->price ?? 0),
+          'purchase_cost' => (float) ($product?->purchase_cost ?? 0),
           'qty' => $qty,
           'line_total' => ((float) ($product?->price ?? 0)) * $qty,
+          'line_cost' => ((float) ($product?->purchase_cost ?? 0)) * $qty,
         ]);
 
         InventoryAdjustment::create([

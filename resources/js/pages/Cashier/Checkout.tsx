@@ -17,6 +17,7 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { cn } from '@/lib/utils';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -958,8 +959,13 @@ export default function Checkout() {
                             </div>
                             <div className="grid gap-3 md:grid-cols-2">
                                 <ActionButton label="Check - Out" onClick={handleCheckout} disabled={cartItems.length === 0} />
-                                <ActionButton label="Clear" onClick={clearCart} disabled={cartItems.length === 0} />
                                 <ActionButton label="Create Delivery" onClick={openCreateDelivery} disabled={cartItems.length === 0} />
+                                <ActionButton
+                                    label="Clear"
+                                    onClick={clearCart}
+                                    disabled={cartItems.length === 0}
+                                    className="md:col-span-2"
+                                />
                             </div>
 
                             {lastReceipt && (
@@ -1164,13 +1170,26 @@ function CartRow({
     );
 }
 
-function ActionButton({ label, onClick, disabled }: { label: string; onClick?: () => void; disabled?: boolean }) {
+function ActionButton({
+    label,
+    onClick,
+    disabled,
+    className,
+}: {
+    label: string;
+    onClick?: () => void;
+    disabled?: boolean;
+    className?: string;
+}) {
     return (
         <button
             type="button"
             onClick={onClick}
             disabled={disabled}
-            className="h-12 rounded-lg bg-primary text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 active:bg-primary/80 transition-colors disabled:opacity-50 disabled:pointer-events-none"
+            className={cn(
+                'h-12 min-h-12 w-full rounded-lg bg-primary text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 active:bg-primary/80 transition-colors disabled:opacity-50 disabled:pointer-events-none',
+                className,
+            )}
         >
             {label}
         </button>

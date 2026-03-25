@@ -532,13 +532,6 @@ export default function Transaction() {
                                     </div>
                                 </div>
 
-                                <div className="flex items-end gap-2">
-                                    <Button type="button" variant="outline" onClick={printReport}>
-                                        <Printer className="mr-2 h-4 w-4" />
-                                        Print
-                                    </Button>
-                                </div>
-
                                 <div className="space-y-1">
                                     <div className="text-xs font-medium text-muted-foreground">Date</div>
                                     <Input type="date" value={filterDate} onChange={(e) => setFilterDate(e.target.value)} />

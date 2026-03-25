@@ -4,7 +4,6 @@ import type { BreadcrumbItem } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -175,10 +174,6 @@ export default function CashierActivityLog() {
                                 <SelectItem value="90days">Last 90 Days</SelectItem>
                             </SelectContent>
                         </Select>
-                        <Button variant="outline" disabled>
-                            <Download className="mr-2 h-4 w-4" />
-                            Export
-                        </Button>
                     </div>
                 </div>
 

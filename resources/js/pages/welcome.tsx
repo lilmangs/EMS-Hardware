@@ -156,48 +156,57 @@ export default function Welcome() {
                                 <div className="lp-float absolute -bottom-6 -right-2 hidden sm:block">
                                     <Badge variant="secondary">+ Faster checkout</Badge>
                                 </div>
-
                                 <Card className="relative overflow-hidden">
                                     <CardHeader className="gap-2">
                                         <div className="flex items-center justify-between">
-                                            <CardTitle className="text-lg">Today’s Snapshot</CardTitle>
-                                            <Badge variant="outline">Live</Badge>
+                                            <CardTitle className="text-lg">Main Features</CardTitle>
+                                            <Badge variant="outline">Built-in</Badge>
                                         </div>
-                                        <p className="text-sm text-muted-foreground">A quick view of what matters right now.</p>
+                                        <p className="text-sm text-muted-foreground">
+                                            Everything you need for daily operations across branches.
+                                        </p>
                                     </CardHeader>
                                     <CardContent>
-                                        <div className="grid grid-cols-3 gap-3">
-                                            <div className="rounded-lg border bg-background/60 p-4">
-                                                <div className="text-sm text-muted-foreground">Sales</div>
-                                                <div className="mt-2 text-2xl font-semibold">₱12.4k</div>
-                                                <div className="mt-1 text-xs text-muted-foreground">Today</div>
-                                            </div>
-                                            <div className="rounded-lg border bg-background/60 p-4">
-                                                <div className="text-sm text-muted-foreground">Orders</div>
-                                                <div className="mt-2 text-2xl font-semibold">48</div>
-                                                <div className="mt-1 text-xs text-muted-foreground">Processed</div>
-                                            </div>
-                                            <div className="rounded-lg border bg-background/60 p-4">
-                                                <div className="text-sm text-muted-foreground">Low Stock</div>
-                                                <div className="mt-2 text-2xl font-semibold">6</div>
-                                                <div className="mt-1 text-xs text-muted-foreground">Items</div>
-                                            </div>
-                                        </div>
-
-                                        <div className="mt-6 grid gap-2">
+                                        <div className="grid gap-3">
                                             <div className="flex items-center justify-between rounded-lg border bg-background/60 px-4 py-3">
-                                                <div className="text-sm">
-                                                    <span className="font-medium">Cement</span>
-                                                    <span className="text-muted-foreground"> · stock alert</span>
+                                                <div className="flex items-center gap-3">
+                                                    <ShoppingCart className="h-4 w-4 text-primary" />
+                                                    <div className="text-sm">
+                                                        <div className="font-medium">POS & Checkout</div>
+                                                        <div className="text-muted-foreground">Fast billing with receipts</div>
+                                                    </div>
                                                 </div>
-                                                <Badge variant="destructive">Low</Badge>
+                                                <Badge variant="secondary">POS</Badge>
                                             </div>
                                             <div className="flex items-center justify-between rounded-lg border bg-background/60 px-4 py-3">
-                                                <div className="text-sm">
-                                                    <span className="font-medium">Delivery</span>
-                                                    <span className="text-muted-foreground"> · 3 active</span>
+                                                <div className="flex items-center gap-3">
+                                                    <ScanBarcode className="h-4 w-4 text-primary" />
+                                                    <div className="text-sm">
+                                                        <div className="font-medium">Barcode Integration</div>
+                                                        <div className="text-muted-foreground">Quick scan for accuracy</div>
+                                                    </div>
                                                 </div>
-                                                <Badge variant="secondary">On route</Badge>
+                                                <Badge variant="secondary">Barcode</Badge>
+                                            </div>
+                                            <div className="flex items-center justify-between rounded-lg border bg-background/60 px-4 py-3">
+                                                <div className="flex items-center gap-3">
+                                                    <Store className="h-4 w-4 text-primary" />
+                                                    <div className="text-sm">
+                                                        <div className="font-medium">Dual-Branch Monitoring</div>
+                                                        <div className="text-muted-foreground">Centralized multi-branch view</div>
+                                                    </div>
+                                                </div>
+                                                <Badge variant="secondary">Branches</Badge>
+                                            </div>
+                                            <div className="flex items-center justify-between rounded-lg border bg-background/60 px-4 py-3">
+                                                <div className="flex items-center gap-3">
+                                                    <Truck className="h-4 w-4 text-primary" />
+                                                    <div className="text-sm">
+                                                        <div className="font-medium">Delivery Scheduling</div>
+                                                        <div className="text-muted-foreground">Assign and track deliveries</div>
+                                                    </div>
+                                                </div>
+                                                <Badge variant="secondary">Delivery</Badge>
                                             </div>
                                         </div>
                                     </CardContent>
@@ -363,8 +372,8 @@ export default function Welcome() {
                                 <Card className="overflow-hidden p-0">
                                     <div className="relative aspect-[4/3]">
                                         <img
-                                            src="https://images.unsplash.com/photo-1581093450021-4a7360e9a6b5?auto=format&fit=crop&q=80"
-                                            alt="Hardware store"
+                                            src="/about.jpg"
+                                            alt="About us"
                                             className="absolute inset-0 h-full w-full object-cover"
                                         />
                                         <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/20 to-transparent" />
@@ -476,3 +485,4 @@ export default function Welcome() {
         </>
     );
 }
+

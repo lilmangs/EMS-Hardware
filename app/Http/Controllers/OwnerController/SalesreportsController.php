@@ -20,7 +20,7 @@ class SalesreportsController extends Controller
     public function show(Request $request, PosSale $sale): JsonResponse
     {
         $sale->load([
-            'items:id,pos_sale_id,name,price,qty,line_total',
+            'items:id,pos_sale_id,name,price,purchase_cost,qty,line_total,line_cost',
             'delivery:id,pos_sale_id,delivery_fee',
         ]);
 
@@ -37,8 +37,11 @@ class SalesreportsController extends Controller
                     return [
                         'name' => $it->name,
                         'price' => (float) ($it->price ?? 0),
+                        'purchase_cost' => (float) ($it->purchase_cost ?? 0),
                         'qty' => (int) ($it->qty ?? 0),
                         'line_total' => (float) ($it->line_total ?? 0),
+                        'line_cost' => (float) ($it->line_cost ?? 0),
+                        'line_profit' => (float) (($it->line_total ?? 0) - ($it->line_cost ?? 0)),
                     ];
                 })->values(),
             ],
@@ -66,7 +69,7 @@ class SalesreportsController extends Controller
         };
         $to = $now->copy()->endOfDay();
 
-        $query = PosSale::query()->with(['items:id,pos_sale_id,qty', 'delivery:id,pos_sale_id,delivery_fee']);
+        $query = PosSale::query()->with(['items:id,pos_sale_id,qty,line_total,line_cost', 'delivery:id,pos_sale_id,delivery_fee']);
 
         if ($branchKey !== 'all') {
             $query->where('branch_key', $branchKey);
@@ -97,8 +100,19 @@ class SalesreportsController extends Controller
             ])
             ->values();
 
-        $totals = (clone $query)
-            ->selectRaw('COUNT(*) as orders, COALESCE(SUM(total),0) as revenue, COALESCE(SUM(subtotal),0) as subtotal')
+        $itemsAggregateQuery = DB::table('pos_sales')
+            ->join('pos_sale_items', 'pos_sales.id', '=', 'pos_sale_items.pos_sale_id')
+            ->whereBetween('pos_sales.created_at', [$from, $to]);
+
+        if ($branchKey !== 'all') {
+            $itemsAggregateQuery->where('pos_sales.branch_key', $branchKey);
+        }
+
+        $totals = (clone $itemsAggregateQuery)
+            ->selectRaw('COUNT(DISTINCT pos_sales.id) as orders')
+            ->selectRaw('COALESCE(SUM(pos_sale_items.qty),0) as items')
+            ->selectRaw('COALESCE(SUM(pos_sale_items.line_total),0) as revenue')
+            ->selectRaw('COALESCE(SUM(pos_sale_items.line_cost),0) as cost')
             ->first();
 
         $paginator = (clone $query)
@@ -107,20 +121,72 @@ class SalesreportsController extends Controller
             ->appends($request->query());
 
         $salesForPage = collect($paginator->items());
-        $itemsSoldQuery = DB::table('pos_sales')
-            ->join('pos_sale_items', 'pos_sales.id', '=', 'pos_sale_items.pos_sale_id')
-            ->whereBetween('pos_sales.created_at', [$from, $to]);
-
-        if ($branchKey !== 'all') {
-            $itemsSoldQuery->where('pos_sales.branch_key', $branchKey);
-        }
-
-        $itemsSold = $itemsSoldQuery
-            ->selectRaw('COALESCE(SUM(pos_sale_items.qty),0) as items')
-            ->value('items');
         $orders = (int) ($totals?->orders ?? 0);
         $revenue = (float) ($totals?->revenue ?? 0);
-        $subtotal = (float) ($totals?->subtotal ?? 0);
+        $cost = (float) ($totals?->cost ?? 0);
+        $profit = $revenue - $cost;
+        $itemsSold = (int) ($totals?->items ?? 0);
+
+        $dateExpr = $driver === 'pgsql'
+            ? "to_char(pos_sales.created_at, 'YYYY-MM-DD')"
+            : "DATE(pos_sales.created_at)";
+        $monthExpr = $driver === 'pgsql'
+            ? "to_char(pos_sales.created_at, 'YYYY-MM')"
+            : "DATE_FORMAT(pos_sales.created_at, '%Y-%m')";
+
+        $dailySummary = (clone $itemsAggregateQuery)
+            ->selectRaw("{$dateExpr} as bucket")
+            ->selectRaw('COALESCE(SUM(pos_sale_items.line_total),0) as revenue')
+            ->selectRaw('COALESCE(SUM(pos_sale_items.line_cost),0) as cost')
+            ->groupBy('bucket')
+            ->orderBy('bucket')
+            ->get()
+            ->map(fn ($r) => [
+                'date' => (string) ($r->bucket ?? ''),
+                'revenue' => (float) ($r->revenue ?? 0),
+                'cost' => (float) ($r->cost ?? 0),
+                'profit' => (float) (($r->revenue ?? 0) - ($r->cost ?? 0)),
+            ])
+            ->values();
+
+        $monthlySummary = (clone $itemsAggregateQuery)
+            ->selectRaw("{$monthExpr} as bucket")
+            ->selectRaw('COALESCE(SUM(pos_sale_items.line_total),0) as revenue')
+            ->selectRaw('COALESCE(SUM(pos_sale_items.line_cost),0) as cost')
+            ->groupBy('bucket')
+            ->orderBy('bucket')
+            ->get()
+            ->map(fn ($r) => [
+                'month' => (string) ($r->bucket ?? ''),
+                'revenue' => (float) ($r->revenue ?? 0),
+                'cost' => (float) ($r->cost ?? 0),
+                'profit' => (float) (($r->revenue ?? 0) - ($r->cost ?? 0)),
+            ])
+            ->values();
+
+        $productMonthlyBreakdown = DB::table('pos_sales')
+            ->join('pos_sale_items', 'pos_sales.id', '=', 'pos_sale_items.pos_sale_id')
+            ->leftJoin('products', 'products.id', '=', 'pos_sale_items.product_id')
+            ->whereBetween('pos_sales.created_at', [$from, $to])
+            ->when($branchKey !== 'all', fn ($q) => $q->where('pos_sales.branch_key', $branchKey))
+            ->selectRaw("{$monthExpr} as month")
+            ->selectRaw("COALESCE(NULLIF(TRIM(pos_sale_items.name),''), NULLIF(TRIM(products.name),''), CONCAT('Product #', COALESCE(pos_sale_items.product_id, 0))) as product_name")
+            ->selectRaw('COALESCE(SUM(pos_sale_items.qty),0) as quantity')
+            ->selectRaw('COALESCE(SUM(pos_sale_items.line_total),0) as revenue')
+            ->selectRaw('COALESCE(SUM(pos_sale_items.line_cost),0) as cost')
+            ->groupBy('month', 'product_name')
+            ->orderBy('month')
+            ->orderByDesc('revenue')
+            ->get()
+            ->map(fn ($r) => [
+                'month' => (string) ($r->month ?? ''),
+                'product_name' => (string) ($r->product_name ?? 'Unknown Product'),
+                'quantity' => (int) ($r->quantity ?? 0),
+                'revenue' => (float) ($r->revenue ?? 0),
+                'cost' => (float) ($r->cost ?? 0),
+                'profit' => (float) (($r->revenue ?? 0) - ($r->cost ?? 0)),
+            ])
+            ->values();
 
         return response()->json([
             'filters' => [
@@ -132,13 +198,19 @@ class SalesreportsController extends Controller
             'trend' => $trend,
             'summary' => [
                 'revenue' => $revenue,
-                'subtotal' => $subtotal,
+                'cost' => $cost,
+                'profit' => $profit,
                 'orders' => $orders,
-                'items' => (int) $itemsSold,
+                'items' => $itemsSold,
                 'avg_order_value' => $orders > 0 ? round($revenue / $orders, 2) : 0,
             ],
+            'daily_summary' => $dailySummary,
+            'monthly_summary' => $monthlySummary,
+            'product_monthly_breakdown' => $productMonthlyBreakdown,
             'transactions' => [
                 'data' => $salesForPage->map(function (PosSale $s) {
+                    $rowRevenue = (float) $s->items->sum('line_total');
+                    $rowCost = (float) $s->items->sum('line_cost');
                     return [
                         'id' => $s->id,
                         'ref' => $s->ref,
@@ -146,7 +218,9 @@ class SalesreportsController extends Controller
                         'items' => (int) $s->items->sum('qty'),
                         'delivery_fee' => $s->delivery ? (float) $s->delivery->delivery_fee : 0.0,
                         'total' => (float) $s->total,
-                        'subtotal' => (float) $s->subtotal,
+                        'revenue' => $rowRevenue,
+                        'cost' => $rowCost,
+                        'profit' => $rowRevenue - $rowCost,
                         'created_at' => $s->created_at?->toISOString(),
                     ];
                 })->values(),

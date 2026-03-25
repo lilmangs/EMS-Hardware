@@ -64,7 +64,7 @@ class BranchComparisonController extends Controller
             ->whereBetween('pos_deliveries.created_at', [$from, $to])
             ->whereIn('pos_deliveries.branch_key', $branches)
             ->selectRaw('pos_deliveries.branch_key as branch_key')
-            ->selectRaw('AVG(pos_sales.total + COALESCE(pos_deliveries.delivery_fee,0)) as avg_value')
+            ->selectRaw('AVG(pos_sales.total) as avg_value')
             ->groupBy('pos_deliveries.branch_key')
             ->pluck('avg_value', 'branch_key');
 

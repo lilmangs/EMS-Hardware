@@ -24,6 +24,7 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import { Badge } from '@/components/ui/badge';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -507,83 +508,122 @@ export default function Refunds() {
                         if (!open) setSelectedRefund(null);
                     }}
                 >
-                    <DialogContent className="sm:max-w-5xl">
-                        <DialogHeader>
-                            <DialogTitle>Refund Details</DialogTitle>
-                            <DialogDescription>Review refund information and refunded items.</DialogDescription>
+                    <DialogContent className="sm:max-w-4xl p-0 overflow-hidden border-none shadow-2xl">
+                        <DialogHeader className="bg-orange-600/30 dark:bg-orange-900/20 p-6 border-b border-orange-100/50 dark:border-orange-900/30">
+                            <div className="flex items-center justify-between">
+                                <div className="space-y-1">
+                                    <DialogTitle className="flex items-center gap-2 text-2xl font-bold text-orange-950 dark:text-orange-100">
+                                        <TicketX className="h-6 w-6 text-orange-600" /> Refund Details
+                                    </DialogTitle>
+                                    <DialogDescription className="text-orange-800/70 dark:text-orange-200/60">
+                                        {selectedRefund ? `Reference: ${selectedRefund.ref}` : 'Review refund request'}
+                                    </DialogDescription>
+                                </div>
+                                {selectedRefund && (
+                                    <Badge className="bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 border-orange-200">
+                                        {selectedRefund.branch_key === 'lagonglong' ? 'Lagonglong Main' : 'Balingasag Branch'}
+                                    </Badge>
+                                )}
+                            </div>
                         </DialogHeader>
 
                         {!selectedRefund ? (
-                            <div className="text-sm text-muted-foreground">No refund selected.</div>
+                            <div className="flex h-64 items-center justify-center text-muted-foreground">No refund selected.</div>
                         ) : (
-                            <div className="grid gap-4 lg:grid-cols-2">
-                                <div className="space-y-4">
-                                    <div className="grid gap-3 rounded-md border p-4 text-sm sm:grid-cols-2">
-                                        <div>
-                                            <div className="text-muted-foreground">Refund Ref</div>
-                                            <div className="font-medium">{selectedRefund.ref}</div>
+                            <div className="flex flex-col lg:flex-row h-[500px]">
+                                {/* Left Side: Summary & Details */}
+                                <div className="w-full lg:w-1.5/5 border-r border-orange-100/30 bg-orange-50/20 p-6 space-y-6 overflow-y-auto">
+                                    <section className="space-y-4">
+                                        <h4 className="text-xs font-bold uppercase tracking-widest text-orange-800/60 flex items-center gap-2">
+                                            <Eye className="h-3 w-3" /> Overview
+                                        </h4>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="space-y-1">
+                                                <p className="text-[10px] text-muted-foreground uppercase font-medium">Sale Ref</p>
+                                                <p className="text-sm font-semibold">{selectedRefund.sale?.ref ?? '—'}</p>
+                                            </div>
+                                            <div className="space-y-1 text-right">
+                                                <p className="text-[10px] text-muted-foreground uppercase font-medium">Refund Total</p>
+                                                <p className="text-lg font-bold text-orange-600 tabular-nums">{peso(selectedRefund.amount)}</p>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <p className="text-[10px] text-muted-foreground uppercase font-medium">Request Date</p>
+                                                <p className="text-sm font-medium">{formatDateTime(selectedRefund.created_at)}</p>
+                                            </div>
+                                            <div className="space-y-1 text-right">
+                                                <p className="text-[10px] text-muted-foreground uppercase font-medium">Processed</p>
+                                                <p className="text-sm font-medium">{formatDateTime(selectedRefund.processed_at) || '—'}</p>
+                                            </div>
                                         </div>
-                                        <div>
-                                            <div className="text-muted-foreground">Sale Ref</div>
-                                            <div className="font-medium">{selectedRefund.sale?.ref ?? '—'}</div>
-                                        </div>
-                                        <div>
-                                            <div className="text-muted-foreground">Branch</div>
-                                            <div className="font-medium">{selectedRefund.branch_key === 'lagonglong' ? 'Lagonglong' : 'Balingasag'}</div>
-                                        </div>
-                                        <div>
-                                            <div className="text-muted-foreground">Created</div>
-                                            <div className="font-medium">{formatDateTime(selectedRefund.created_at)}</div>
-                                        </div>
-                                        <div>
-                                            <div className="text-muted-foreground">Processed</div>
-                                            <div className="font-medium">{formatDateTime(selectedRefund.processed_at)}</div>
-                                        </div>
-                                        <div>
-                                            <div className="text-muted-foreground">Processed By</div>
-                                            <div className="font-medium">{selectedRefund.processed_by?.name ?? '—'}</div>
-                                        </div>
-                                        <div>
-                                            <div className="text-muted-foreground">Amount</div>
-                                            <div className="font-semibold tabular-nums">{peso(selectedRefund.amount)}</div>
-                                        </div>
-                                    </div>
+                                    </section>
 
-                                    <div className="rounded-md border p-4 text-sm">
-                                        <div className="text-muted-foreground">Reason</div>
-                                        <div className="mt-1 font-medium">{selectedRefund.reason ?? '—'}</div>
-                                    </div>
+                                    <section className="space-y-3 pt-4 border-t border-orange-100/50">
+                                        <h4 className="text-xs font-bold uppercase tracking-widest text-orange-800/60 flex items-center gap-2">
+                                            <PhilippinePeso className="h-3 w-3" /> Processing
+                                        </h4>
+                                        <div className="rounded-lg bg-white/50 dark:bg-black/20 p-3 border border-orange-100/50">
+                                            <p className="text-[10px] text-muted-foreground uppercase font-medium mb-1">Processed By</p>
+                                            <p className="text-sm font-semibold">{selectedRefund.processed_by?.name ?? 'System'}</p>
+                                        </div>
+                                        <div className="rounded-lg bg-white/50 dark:bg-black/20 p-3 border border-orange-100/50">
+                                            <p className="text-[10px] text-muted-foreground uppercase font-medium mb-1">Reason for Refund</p>
+                                            <p className="text-sm italic text-muted-foreground leading-relaxed">
+                                                "{selectedRefund.reason ?? 'No reason provided.'}"
+                                            </p>
+                                        </div>
+                                    </section>
                                 </div>
 
-                                <div className="rounded-md border">
-                                    <div className="border-b px-4 py-3 text-sm font-medium">Refunded Items</div>
-                                    <div className="max-h-[60vh] overflow-auto">
+                                {/* Right Side: Items Table */}
+                                <div className="flex-1 flex flex-col min-w-0">
+                                    <div className="p-4 border-b bg-muted/30 flex items-center justify-between">
+                                        <h4 className="text-sm font-bold flex items-center gap-2">
+                                            <CheckCircle2 className="h-4 w-4 text-green-600" /> Refunded Items
+                                        </h4>
+                                        <span className="text-xs text-muted-foreground font-medium">
+                                            {selectedRefund.items?.length || 0} items total
+                                        </span>
+                                    </div>
+                                    <div className="flex-1 overflow-auto relative">
                                         <Table>
-                                            <TableHeader>
-                                                <TableRow>
-                                                    <TableHead>Item</TableHead>
+                                            <TableHeader className="sticky top-0 bg-white dark:bg-background z-10 shadow-sm">
+                                                <TableRow className="hover:bg-transparent">
+                                                    <TableHead className="w-[60%]">Product Name</TableHead>
                                                     <TableHead className="text-right">Qty</TableHead>
-                                                    <TableHead className="text-right">Amount</TableHead>
+                                                    <TableHead className="text-right pr-6">Amount</TableHead>
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
                                                 {(selectedRefund.items ?? []).map((it) => (
-                                                    <TableRow key={it.id}>
+                                                    <TableRow key={it.id} className="hover:bg-orange-50/30 dark:hover:bg-orange-950/10">
                                                         <TableCell className="font-medium">{it.name}</TableCell>
-                                                        <TableCell className="text-right tabular-nums">{it.qty}</TableCell>
-                                                        <TableCell className="text-right tabular-nums">{peso(it.amount)}</TableCell>
+                                                        <TableCell className="text-right tabular-nums">
+                                                            <Badge variant="outline" className="font-bold">{it.qty}</Badge>
+                                                        </TableCell>
+                                                        <TableCell className="text-right tabular-nums font-semibold pr-6">
+                                                            {peso(it.amount)}
+                                                        </TableCell>
                                                     </TableRow>
                                                 ))}
 
                                                 {(!selectedRefund.items || selectedRefund.items.length === 0) && (
                                                     <TableRow>
-                                                        <TableCell colSpan={3} className="py-6 text-center text-sm text-muted-foreground">
-                                                            No items.
+                                                        <TableCell colSpan={3} className="py-12 text-center">
+                                                            <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                                                                <Eye className="h-8 w-8 opacity-20" />
+                                                                <p className="text-sm">No items found in this refund record.</p>
+                                                            </div>
                                                         </TableCell>
                                                     </TableRow>
                                                 )}
                                             </TableBody>
                                         </Table>
+                                    </div>
+                                    <div className="p-4 bg-orange-600/5 dark:bg-orange-600/10 border-t border-orange-100/50 flex justify-between items-center">
+                                        <span className="text-xs font-semibold text-orange-800 dark:text-orange-200">Final Refund Amount</span>
+                                        <span className="text-lg font-black text-orange-600 tabular-nums tracking-tight">
+                                            {peso(selectedRefund.amount)}
+                                        </span>
                                     </div>
                                 </div>
                             </div>

@@ -42,7 +42,7 @@ class InventoryController extends Controller
             ->with(['stocks' => function ($q) use ($branches) {
                 $q->whereIn('branch_key', $branches);
             }])
-            ->select(['id', 'sku', 'barcode_value', 'name', 'category', 'price', 'image_path'])
+            ->select(['id', 'sku', 'barcode_value', 'name', 'category', 'price', 'purchase_cost', 'image_path'])
             ->orderBy('name');
 
         if (count($branches) === 1) {
@@ -85,6 +85,7 @@ class InventoryController extends Controller
                     'name' => $p->name,
                     'category' => $p->category,
                     'price' => $p->price,
+                    'purchase_cost' => $p->purchase_cost,
                     'image_path' => $p->image_path,
                     'branch_key' => $bk,
                     'stock' => (int) $baseStock,
@@ -114,6 +115,7 @@ class InventoryController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'category' => ['nullable', 'string', 'max:255'],
             'price' => ['nullable', 'numeric', 'min:0'],
+            'purchase_cost' => ['nullable', 'numeric', 'min:0'],
             'branch_key' => ['required', Rule::in(['lagonglong', 'balingasag'])],
             'stock' => ['required', 'integer', 'min:0'],
             'reorder_level' => ['nullable', 'integer', 'min:0'],
@@ -131,6 +133,7 @@ class InventoryController extends Controller
                 'name' => $validated['name'],
                 'category' => $validated['category'] ?? null,
                 'price' => $validated['price'] ?? 0,
+                'purchase_cost' => $validated['purchase_cost'] ?? 0,
             ]
         );
 

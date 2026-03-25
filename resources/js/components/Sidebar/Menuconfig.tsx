@@ -11,12 +11,10 @@ import {
     PackageSearch,
     TicketX,
     Users,
-    ClipboardList,
     Truck,
     Archive,
 } from 'lucide-react';
 import type { NavItem } from '@/types';
-import superadmin from '@/routes/superadmin';
 
 
 
@@ -29,37 +27,31 @@ export interface MenuItem {
 export const sidebarMenus: Record<string, MenuItem[]> = {
     owner: [
         { label: 'Dashboard', href: '/dashboard', icon: LayoutGrid },
-        { label: 'Products', href: '/Products', icon: ShoppingCart },
-        { label: 'Inventory', href: '/inventory', icon: PackageSearch },
+        { label: 'Branch Comparison', href: '/BranchComparison', icon: GitCompare },
         { label: 'Sales Reports', href: '/SalesReports', icon: ChartColumn },
+        { label: 'Staff Monitoring', href: '/owner/staff-monitoring', icon: Users2Icon },
+        { label: 'Inventory Monitoring', href: '/inventory', icon: PackageSearch },
         { label: 'Refunds', href: '/owner/refunds', icon: TicketX },
         { label: 'Delivery Monitoring', href: '/owner/delivery-monitoring', icon: Truck },
-        { label: 'Staff Monitoring', href: '/owner/staff-monitoring', icon: Users2Icon },
-        { label: 'Branch Comparison', href: '/BranchComparison', icon: GitCompare },
+        { label: 'User Management', href: '/owner/users', icon: Users },
+        { label: 'Products', href: '/Products', icon: ShoppingCart },
         { label: 'Archive', href: '/owner/archive', icon: Archive },
         { label: 'Activity Log', href: '/ActivityLog', icon: FileText },
     ],
 
     cashier: [
-        { label: 'Dashboard', href: '/dashboard/cashier', icon: LayoutGrid },
         { label: 'Checkout', href: '/Checkout', icon: ArrowRightLeft },
         { label: 'Transaction', href: '/Transaction', icon: FileText },
-        { label: 'Products', href: '/Products', icon: PackageSearch },
         { label: 'Refund', href: '/Refund', icon: TicketX },
-        { label: 'Deliveries', href: '/cashier/deliveries', icon: Truck },
+        { label: 'Products', href: '/Products', icon: PackageSearch },
         { label: 'Activity Log', href: '/cashier/activity-log', icon: FileText },
 
     ],
 
-    superadmin: [
-        { label: 'Dashboard', href: '/dashboard', icon: LayoutGrid },
-        { label: 'User Management', href: '/Superadmin/Users', icon: Users },
-        { label: 'Activity Log', href: superadmin.activitylog().url, icon: ClipboardList },
-    ],
     staff: [
         { label: 'Dashboard', href: '/dashboard/staff', icon: LayoutGrid },
-        { label: 'Inventory', href: '/inventory', icon: PackageSearch },
-        { label: 'Products', href: '/Products', icon: ShoppingCart }, 
+        { label: 'Inventory Management', href: '/inventory', icon: PackageSearch },
+        { label: 'Products', href: '/Products', icon: ShoppingCart },
         { label: 'Archive', href: '/staff/archive', icon: Archive },
         { label: 'Activity Log', href: '/staff/activity-log', icon: FileText },
 
@@ -68,7 +60,7 @@ export const sidebarMenus: Record<string, MenuItem[]> = {
     delivery: [
         { label: 'Calendar', href: '/delivery/calendar', icon: Truck },
     ],
-    
+
 
 };
 

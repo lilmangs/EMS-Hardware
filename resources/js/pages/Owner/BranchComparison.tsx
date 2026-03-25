@@ -7,9 +7,14 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
-import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Package, Users } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Package, Users, FileDown } from 'lucide-react';
 import { useEffect, useState } from 'react';
-
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 const breadcrumbs: BreadcrumbItem[] = [
     {
         title: 'Branch Comparison',
@@ -91,10 +96,272 @@ export default function BranchComparison() {
     const balingasag = data?.branches?.balingasag;
 
     const exportReport = async () => {
+        const esc = (v: unknown) =>
+            String(v ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+
+        const rangeLabel =
+            range === '1month'
+                ? 'Last Month'
+                : range === '3months'
+                    ? 'Last 3 Months'
+                    : range === '1year'
+                        ? 'Last Year'
+                        : 'Last 6 Months';
+
+        const formatPeso = (n: number) =>
+            `₱${(Number(n) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+        const formatPeriodLine = (from: string, to: string) => {
+            const a = new Date(from);
+            const b = new Date(to);
+            if (Number.isNaN(a.getTime()) || Number.isNaN(b.getTime())) return `${from} – ${to}`;
+            const opts: Intl.DateTimeFormatOptions = {
+                year: 'numeric',
+                month: 'short',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+            };
+            return `${a.toLocaleString(undefined, opts)} – ${b.toLocaleString(undefined, opts)}`;
+        };
+
+        const formatMonthlyBucketLabel = (bucket: string) => {
+            if (!bucket) return '—';
+            const d = new Date(`${bucket}-01`);
+            if (Number.isNaN(d.getTime())) return bucket;
+            return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short' });
+        };
+
         try {
+            setError(null);
+
             const qs = new URLSearchParams({ range });
             const res = await fetch(`/BranchComparison/data?${qs.toString()}`, {
                 headers: { Accept: 'application/json' },
+                credentials: 'same-origin',
+                cache: 'no-store',
+            });
+            if (!res.ok) throw new Error('Request failed');
+            const json = (await res.json()) as BranchComparisonResponse;
+
+            const pw = window.open('', '_blank', 'width=1200,height=800');
+            if (!pw) throw new Error('Popup blocked');
+
+            const stamp = new Date().toLocaleString();
+            const filters = json.filters;
+            const branches = json.branches;
+
+            const currentPeriodLine = filters ? formatPeriodLine(filters.from, filters.to) : '';
+            const previousPeriodLine = filters ? formatPeriodLine(filters.prev_from, filters.prev_to) : '';
+
+            const monthlyRows = (json.monthlySales ?? [])
+                .map(
+                    (m) => `
+        <tr>
+          <td>${esc(formatMonthlyBucketLabel(m.month))}</td>
+          <td class="num">${esc(formatPeso(Number(m.lagonglong) || 0))}</td>
+          <td class="num">${esc(formatPeso(Number(m.balingasag) || 0))}</td>
+        </tr>`,
+                )
+                .join('');
+
+            const categoryRows = (json.categoryComparison ?? [])
+                .map(
+                    (c) => `
+        <tr>
+          <td>${esc(c.category)}</td>
+          <td class="num">${esc(formatPeso(Number(c.lagonglong) || 0))}</td>
+          <td class="num">${esc(formatPeso(Number(c.balingasag) || 0))}</td>
+        </tr>`,
+                )
+                .join('');
+
+            const topProductsRows = (json.topProducts ?? [])
+                .map(
+                    (p) => `
+        <tr>
+          <td>${esc(p.product)}</td>
+          <td class="num">${esc(formatPeso(Number(p.lagonglongSales) || 0))}</td>
+          <td class="num">${esc(formatPeso(Number(p.balingasagSales) || 0))}</td>
+        </tr>`,
+                )
+                .join('');
+
+            const summaryRowsHtml = `
+        <tr><td>Total sales</td><td style="text-align:right;font-weight:600">${esc(formatPeso(Number(json.summary?.totalSales) || 0))}</td></tr>
+        <tr><td>Total deliveries</td><td style="text-align:right;font-weight:600">${esc(String(json.summary?.totalDeliveries ?? 0))}</td></tr>
+        <tr><td>Total customers</td><td style="text-align:right;font-weight:600">${esc(String(json.summary?.totalCustomers ?? 0))}</td></tr>
+        <tr><td>Avg delivery value</td><td style="text-align:right;font-weight:600">${esc(formatPeso(Number(json.summary?.avgDeliveryValue) || 0))}</td></tr>`;
+
+            const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Branch Comparison — ${esc(rangeLabel)}</title>
+  <style>
+    *{box-sizing:border-box;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial;}
+    body{margin:0;padding:20px;color:#111827;background:#fff;}
+    .wrap{max-width:1100px;margin:0 auto;}
+    .doc-title{font-size:22px;font-weight:800;margin:0 0 4px;letter-spacing:-0.02em;}
+    .doc-sub{font-size:13px;color:#6b7280;margin:0 0 16px;}
+    .meta{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px 16px;font-size:12px;color:#374151;margin-bottom:20px;padding:12px 14px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;}
+    .meta strong{color:#111827;}
+    .section{margin-top:22px;page-break-inside:avoid;}
+    .section h2{font-size:14px;font-weight:700;margin:0 0 10px;color:#111827;border-bottom:2px solid #e5e7eb;padding-bottom:6px;}
+    table.report{width:100%;border-collapse:collapse;font-size:12px;}
+    table.report th,table.report td{padding:8px 10px;border:1px solid #e5e7eb;vertical-align:top;}
+    table.report th{text-align:left;background:#f3f4f6;font-weight:700;}
+    table.report td.num,table.report th.num{text-align:right;}
+    table.compact{max-width:520px;}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+    .branch-card{border:1px solid #e5e7eb;border-radius:10px;padding:12px;background:#fff;}
+    .branch-card h3{margin:0 0 8px;font-size:13px;font-weight:700;}
+    .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#f3f4f6;font-size:11px;color:#374151;margin-right:6px;}
+    .no-print{margin-bottom:12px;}
+    @media print{
+      body{padding:12px;}
+      .wrap{max-width:none;}
+      .no-print{display:none!important;}
+      table.report{page-break-inside:auto;}
+      tr{page-break-inside:avoid;page-break-after:auto;}
+      thead{display:table-header-group;}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1 class="doc-title">Branch Comparison</h1>
+    <p class="doc-sub">Owner — compare Lagonglong and Balingasag performance</p>
+    <div class="meta">
+      <div><strong>Generated</strong><br/>${esc(stamp)}</div>
+      <div><strong>Period</strong><br/>${esc(rangeLabel)}</div>
+      <div><strong>Current range</strong><br/>${esc(currentPeriodLine)}</div>
+      <div><strong>Previous range</strong><br/>${esc(previousPeriodLine)}</div>
+    </div>
+
+    <div class="no-print">
+      <button type="button" onclick="window.print()" style="padding:10px 16px;border-radius:8px;border:1px solid #e5e7eb;background:#111827;color:#fff;font-size:13px;font-weight:600;cursor:pointer;">Print / Save as PDF</button>
+    </div>
+
+    <section class="section">
+      <h2>Summary</h2>
+      <table class="report compact">
+        <tbody>${summaryRowsHtml}</tbody>
+      </table>
+    </section>
+
+    <section class="section">
+      <h2>Branch metrics</h2>
+      <div class="grid2">
+        <div class="branch-card">
+          <h3>${esc(branches?.lagonglong?.name ?? 'Lagonglong')}</h3>
+          <table class="report">
+            <tbody>
+              <tr><td><span class="pill">Sales</span></td><td class="num">${esc(formatPeso(Number(branches?.lagonglong?.totalSales) || 0))}</td></tr>
+              <tr><td><span class="pill">Deliveries</span></td><td class="num">${esc(String(branches?.lagonglong?.totalDeliveries ?? 0))}</td></tr>
+              <tr><td><span class="pill">Avg delivery</span></td><td class="num">${esc(formatPeso(Number(branches?.lagonglong?.avgDeliveryValue) || 0))}</td></tr>
+              <tr><td><span class="pill">Growth</span></td><td class="num">${esc(Number(branches?.lagonglong?.growth ?? 0).toFixed(2))}%</td></tr>
+              <tr><td><span class="pill">Top product</span></td><td>${esc(branches?.lagonglong?.topProduct ?? '—')}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="branch-card">
+          <h3>${esc(branches?.balingasag?.name ?? 'Balingasag')}</h3>
+          <table class="report">
+            <tbody>
+              <tr><td><span class="pill">Sales</span></td><td class="num">${esc(formatPeso(Number(branches?.balingasag?.totalSales) || 0))}</td></tr>
+              <tr><td><span class="pill">Deliveries</span></td><td class="num">${esc(String(branches?.balingasag?.totalDeliveries ?? 0))}</td></tr>
+              <tr><td><span class="pill">Avg delivery</span></td><td class="num">${esc(formatPeso(Number(branches?.balingasag?.avgDeliveryValue) || 0))}</td></tr>
+              <tr><td><span class="pill">Growth</span></td><td class="num">${esc(Number(branches?.balingasag?.growth ?? 0).toFixed(2))}%</td></tr>
+              <tr><td><span class="pill">Top product</span></td><td>${esc(branches?.balingasag?.topProduct ?? '—')}</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Monthly sales</h2>
+      <table class="report">
+        <thead>
+          <tr>
+            <th>Month</th>
+            <th class="num">Lagonglong</th>
+            <th class="num">Balingasag</th>
+          </tr>
+        </thead>
+        <tbody>${monthlyRows || `<tr><td colspan="3" style="color:#6b7280">No data</td></tr>`}</tbody>
+      </table>
+    </section>
+
+    <section class="section">
+      <h2>Category comparison (top 10)</h2>
+      <table class="report">
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th class="num">Lagonglong</th>
+            <th class="num">Balingasag</th>
+          </tr>
+        </thead>
+        <tbody>${categoryRows || `<tr><td colspan="3" style="color:#6b7280">No data</td></tr>`}</tbody>
+      </table>
+    </section>
+
+    <section class="section">
+      <h2>Top products (top 10)</h2>
+      <table class="report">
+        <thead>
+          <tr>
+            <th>Product</th>
+            <th class="num">Lagonglong</th>
+            <th class="num">Balingasag</th>
+          </tr>
+        </thead>
+        <tbody>${topProductsRows || `<tr><td colspan="3" style="color:#6b7280">No data</td></tr>`}</tbody>
+      </table>
+    </section>
+  </div>
+  <script>window.onload=function(){window.print();};</script>
+</body>
+</html>`;
+
+            pw.document.open();
+            pw.document.write(html);
+            pw.document.close();
+        } catch (e: unknown) {
+            setError(e instanceof Error ? e.message : 'Export failed.');
+        }
+    };
+
+    const exportCsv = async () => {
+        const csvEscape = (v: unknown) => {
+            const s = String(v ?? '');
+            if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
+            return s;
+        };
+
+        const toPesoNumber = (n: unknown) => {
+            const num = Number(n);
+            return Number.isFinite(num) ? num : 0;
+        };
+
+        const pushRow = (lines: string[], row: unknown[]) => {
+            lines.push(row.map(csvEscape).join(','));
+        };
+
+        try {
+            setError(null);
+
+            const qs = new URLSearchParams({ range });
+            const res = await fetch(`/BranchComparison/data?${qs.toString()}`, {
+                headers: { Accept: 'application/json' },
+                credentials: 'same-origin',
             });
             if (!res.ok) throw new Error('Request failed');
             const json = (await res.json()) as BranchComparisonResponse;
@@ -108,205 +375,65 @@ export default function BranchComparison() {
                             ? 'Last Year'
                             : 'Last 6 Months';
 
-            const formatPeso = (n: number) =>
-                `₱${(Number(n) || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+            const lines: string[] = [];
+            pushRow(lines, ['Section', 'Key', 'Value']);
+            pushRow(lines, ['Info', 'Range', rangeLabel]);
+            pushRow(lines, ['Info', 'From', json.filters?.from ?? '']);
+            pushRow(lines, ['Info', 'To', json.filters?.to ?? '']);
+            pushRow(lines, ['Info', 'Previous From', json.filters?.prev_from ?? '']);
+            pushRow(lines, ['Info', 'Previous To', json.filters?.prev_to ?? '']);
+            lines.push('');
 
-            const safe = (v: unknown) => String(v ?? '—');
-            const formatDateTime = (raw: string) => {
-                const d = new Date(raw);
-                if (Number.isNaN(d.getTime())) return raw;
-                return d.toLocaleString(undefined, {
-                    year: 'numeric',
-                    month: 'short',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    hour12: true,
-                });
-            };
+            pushRow(lines, ['Section', 'Metric', 'Value']);
+            pushRow(lines, ['Summary', 'Total Sales', toPesoNumber(json.summary?.totalSales).toFixed(2)]);
+            pushRow(lines, ['Summary', 'Total Deliveries', json.summary?.totalDeliveries ?? 0]);
+            pushRow(lines, ['Summary', 'Total Customers', json.summary?.totalCustomers ?? 0]);
+            pushRow(lines, ['Summary', 'Avg Delivery Value', toPesoNumber(json.summary?.avgDeliveryValue).toFixed(2)]);
+            lines.push('');
 
-            const printWindow = window.open('', '_blank');
-            if (!printWindow) throw new Error('Popup blocked');
+            pushRow(lines, ['Section', 'Month', 'Lagonglong Sales', 'Balingasag Sales']);
+            (json.monthlySales ?? []).forEach((m) => {
+                pushRow(lines, [
+                    'Monthly Sales',
+                    m.month ?? '',
+                    toPesoNumber(m.lagonglong).toFixed(2),
+                    toPesoNumber(m.balingasag).toFixed(2),
+                ]);
+            });
+            lines.push('');
 
-            const stamp = new Date().toLocaleString();
-            const filters = json.filters;
-            const branches = json.branches;
+            pushRow(lines, ['Section', 'Category', 'Lagonglong Sales', 'Balingasag Sales']);
+            (json.categoryComparison ?? []).forEach((c) => {
+                pushRow(lines, [
+                    'Category Comparison',
+                    c.category ?? '',
+                    toPesoNumber(c.lagonglong).toFixed(2),
+                    toPesoNumber(c.balingasag).toFixed(2),
+                ]);
+            });
+            lines.push('');
 
-            const monthlyRows = (json.monthlySales ?? [])
-                .map(
-                    (m) => `
-                        <tr>
-                            <td>${safe(m.month)}</td>
-                            <td style="text-align:right">${formatPeso(Number(m.lagonglong) || 0)}</td>
-                            <td style="text-align:right">${formatPeso(Number(m.balingasag) || 0)}</td>
-                        </tr>
-                    `
-                )
-                .join('');
+            pushRow(lines, ['Section', 'Product', 'Lagonglong Sales', 'Balingasag Sales']);
+            (json.topProducts ?? []).forEach((p) => {
+                pushRow(lines, [
+                    'Top Products',
+                    p.product ?? '',
+                    toPesoNumber(p.lagonglongSales).toFixed(2),
+                    toPesoNumber(p.balingasagSales).toFixed(2),
+                ]);
+            });
 
-            const categoryRows = (json.categoryComparison ?? [])
-                .map(
-                    (c) => `
-                        <tr>
-                            <td>${safe(c.category)}</td>
-                            <td style="text-align:right">${formatPeso(Number(c.lagonglong) || 0)}</td>
-                            <td style="text-align:right">${formatPeso(Number(c.balingasag) || 0)}</td>
-                        </tr>
-                    `
-                )
-                .join('');
+            const csv = lines.join('\r\n');
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
 
-            const topProductsRows = (json.topProducts ?? [])
-                .map(
-                    (p) => `
-                        <tr>
-                            <td>${safe(p.product)}</td>
-                            <td style="text-align:right">${formatPeso(Number(p.lagonglongSales) || 0)}</td>
-                            <td style="text-align:right">${formatPeso(Number(p.balingasagSales) || 0)}</td>
-                        </tr>
-                    `
-                )
-                .join('');
-
-            const html = `
-                <!doctype html>
-                <html>
-                <head>
-                    <meta charset="utf-8" />
-                    <meta name="viewport" content="width=device-width, initial-scale=1" />
-                    <title>Branch Comparison Report</title>
-                    <style>
-                        * { box-sizing: border-box; }
-                        body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; margin: 24px; color: #111827; }
-                        .muted { color: #6b7280; }
-                        .title { font-size: 20px; font-weight: 700; margin: 0; }
-                        .subtitle { margin: 6px 0 0; font-size: 12px; }
-                        .row { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
-                        .card { border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; min-width: 220px; flex: 1; }
-                        .card h3 { margin: 0; font-size: 12px; color: #6b7280; font-weight: 600; }
-                        .card .val { margin-top: 6px; font-size: 18px; font-weight: 700; }
-                        .section { margin-top: 16px; }
-                        .section h2 { font-size: 14px; margin: 0 0 8px; }
-                        table { width: 100%; border-collapse: collapse; }
-                        th, td { border: 1px solid #e5e7eb; padding: 8px; font-size: 12px; vertical-align: top; }
-                        th { background: #f9fafb; text-align: left; }
-                        .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-                        .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; background: #f3f4f6; font-size: 11px; color: #374151; }
-                        @media print { body { margin: 0; } .no-print { display: none !important; } }
-                    </style>
-                </head>
-                <body>
-                    <div class="no-print" style="display:flex;justify-content:flex-end;margin-bottom:12px;">
-                        <button onclick="window.print()" style="padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;background:#111827;color:white;cursor:pointer;">Print / Save as PDF</button>
-                    </div>
-
-                    <div>
-                        <p class="title">Branch Comparison Report</p>
-                        <p class="subtitle muted">${safe(rangeLabel)} • Generated ${safe(stamp)}</p>
-                        <p class="subtitle muted">Range: ${safe(formatDateTime(safe(filters?.from)))} to ${safe(formatDateTime(safe(filters?.to)))}</p>
-                        <p class="subtitle muted">Previous: ${safe(formatDateTime(safe(filters?.prev_from)))} to ${safe(formatDateTime(safe(filters?.prev_to)))}</p>
-                    </div>
-
-                    <div class="row">
-                        <div class="card">
-                            <h3>Total Sales</h3>
-                            <div class="val">${formatPeso(Number(json.summary?.totalSales) || 0)}</div>
-                        </div>
-                        <div class="card">
-                            <h3>Total Deliveries</h3>
-                            <div class="val">${safe(json.summary?.totalDeliveries ?? 0)}</div>
-                        </div>
-                        <div class="card">
-                            <h3>Total Customers</h3>
-                            <div class="val">${safe(json.summary?.totalCustomers ?? 0)}</div>
-                        </div>
-                        <div class="card">
-                            <h3>Avg Delivery Value</h3>
-                            <div class="val">${formatPeso(Number(json.summary?.avgDeliveryValue) || 0)}</div>
-                        </div>
-                    </div>
-
-                    <div class="section">
-                        <h2>Branch Metrics</h2>
-                        <div class="grid2">
-                            <div class="card">
-                                <h3>${safe(branches?.lagonglong?.name ?? 'Lagonglong')}</h3>
-                                <div style="margin-top:8px;font-size:12px;">
-                                    <div><span class="pill">Sales</span> <strong>${formatPeso(Number(branches?.lagonglong?.totalSales) || 0)}</strong></div>
-                                    <div style="margin-top:6px;"><span class="pill">Deliveries</span> <strong>${safe(branches?.lagonglong?.totalDeliveries ?? 0)}</strong></div>
-                                    <div style="margin-top:6px;"><span class="pill">Avg Delivery</span> <strong>${formatPeso(Number(branches?.lagonglong?.avgDeliveryValue) || 0)}</strong></div>
-                                    <div style="margin-top:6px;"><span class="pill">Growth</span> <strong>${safe(Number(branches?.lagonglong?.growth ?? 0).toFixed(2))}%</strong></div>
-                                    <div style="margin-top:6px;"><span class="pill">Top Product</span> <strong>${safe(branches?.lagonglong?.topProduct ?? '—')}</strong></div>
-                                </div>
-                            </div>
-                            <div class="card">
-                                <h3>${safe(branches?.balingasag?.name ?? 'Balingasag')}</h3>
-                                <div style="margin-top:8px;font-size:12px;">
-                                    <div><span class="pill">Sales</span> <strong>${formatPeso(Number(branches?.balingasag?.totalSales) || 0)}</strong></div>
-                                    <div style="margin-top:6px;"><span class="pill">Deliveries</span> <strong>${safe(branches?.balingasag?.totalDeliveries ?? 0)}</strong></div>
-                                    <div style="margin-top:6px;"><span class="pill">Avg Delivery</span> <strong>${formatPeso(Number(branches?.balingasag?.avgDeliveryValue) || 0)}</strong></div>
-                                    <div style="margin-top:6px;"><span class="pill">Growth</span> <strong>${safe(Number(branches?.balingasag?.growth ?? 0).toFixed(2))}%</strong></div>
-                                    <div style="margin-top:6px;"><span class="pill">Top Product</span> <strong>${safe(branches?.balingasag?.topProduct ?? '—')}</strong></div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="section">
-                        <h2>Monthly Sales</h2>
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th style="width:34%">Month</th>
-                                    <th style="width:33%;text-align:right">Lagonglong</th>
-                                    <th style="width:33%;text-align:right">Balingasag</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${monthlyRows || '<tr><td colspan="3" class="muted">No data</td></tr>'}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <div class="section">
-                        <h2>Category Comparison (Top 10)</h2>
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th style="width:34%">Category</th>
-                                    <th style="width:33%;text-align:right">Lagonglong</th>
-                                    <th style="width:33%;text-align:right">Balingasag</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${categoryRows || '<tr><td colspan="3" class="muted">No data</td></tr>'}
-                            </tbody>
-                        </table>
-                    </div>
-
-                    <div class="section">
-                        <h2>Top Products (Top 10)</h2>
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th style="width:34%">Product</th>
-                                    <th style="width:33%;text-align:right">Lagonglong</th>
-                                    <th style="width:33%;text-align:right">Balingasag</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                ${topProductsRows || '<tr><td colspan="3" class="muted">No data</td></tr>'}
-                            </tbody>
-                        </table>
-                    </div>
-                </body>
-                </html>
-            `;
-
-            printWindow.document.open();
-            printWindow.document.write(html);
-            printWindow.document.close();
-            printWindow.focus();
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `branch_comparison_${range}_${new Date().toISOString().slice(0, 10)}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
         } catch {
             setError('Export failed.');
         }
@@ -334,7 +461,32 @@ export default function BranchComparison() {
                                 <SelectItem value="1year">Last Year</SelectItem>
                             </SelectContent>
                         </Select>
-                        <Button onClick={exportReport} disabled={isLoading}>Export Report</Button>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button type="button" variant="outline" disabled={isLoading}>
+                                    <FileDown className="mr-2 h-4 w-4" />
+                                    Export
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                <DropdownMenuItem
+                                    onSelect={(e) => {
+                                        e.preventDefault();
+                                        exportCsv();
+                                    }}
+                                >
+                                    Export CSV
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                    onSelect={(e) => {
+                                        e.preventDefault();
+                                        exportReport();
+                                    }}
+                                >
+                                    Export PDF
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     </div>
                 </div>
 

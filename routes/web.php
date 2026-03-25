@@ -1,5 +1,4 @@
 <?php
-use App\Http\Controllers\OwnerController\StaffManagementController;
 use App\Http\Controllers\CashierController\ProductsController;
 use App\Http\Controllers\CashierController\TransactionController;
 use App\Http\Controllers\OwnerController\InventoryController;
@@ -15,13 +14,11 @@ use App\Http\Controllers\OwnerController\StaffMonitoringController;
 use App\Http\Controllers\OwnerController\DashboardDataController;
 use App\Http\Controllers\OwnerController\ArchiveController;
 use App\Http\Controllers\OwnerController\RefundsController;
-use App\Http\Controllers\Admin\SuperadminController;
-use App\Http\Controllers\Admin\AdminActivityLogController;  
+use App\Http\Controllers\OwnerController\UserManagementController;
 use App\Http\Controllers\Staff\DashboardController as StaffDashboardController;
 use App\Http\Controllers\Staff\ArchiveController as StaffArchiveController;
 use App\Http\Controllers\Staff\ActivityLogController as StaffActivityLogController;
 use App\Http\Controllers\Delivery\CalendarController as DeliveryCalendarController;
-use App\Http\Controllers\CashierController\DashboardController as CashierDashboardController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Laravel\Fortify\Features;
@@ -32,32 +29,6 @@ Route::get('/', function () {
     ]);
 })->name('home');
 
-Route::get('/Superadmin', function () {
-    return Inertia::render('Admin/Superadmin');
-})->middleware(['auth', 'verified', 'role:superadmin'])->name('superadmin');
-
-// Superadmin user management routes
-Route::get('/Superadmin/Users', [SuperadminController::class, 'index'])
-    ->middleware(['auth', 'verified', 'role:superadmin'])
-    ->name('superadmin.users');
-
-Route::post('/Superadmin/Users', [SuperadminController::class, 'store'])
-    ->middleware(['auth', 'verified', 'role:superadmin'])
-    ->name('superadmin.users.store');
-
-Route::put('/Superadmin/Users/{user}', [SuperadminController::class, 'update'])
-    ->middleware(['auth', 'verified', 'role:superadmin'])
-    ->name('superadmin.users.update');
-
-Route::delete('/Superadmin/Users/{user}', [SuperadminController::class, 'destroy'])
-    ->middleware(['auth', 'verified', 'role:superadmin'])
-    ->name('superadmin.users.destroy');
-
-Route::get('/Superadmin/ActivityLog', [AdminActivityLogController::class, 'index'])
-    ->middleware(['auth', 'verified', 'role:superadmin'])
-    ->name('superadmin.activitylog');
-
-   
 // Other routes that might need role restrictions
 Route::get('/inventory', [InventoryController::class, 'index'])
     ->middleware(['auth', 'verified', 'role:owner,staff,cashier'])
@@ -130,6 +101,22 @@ Route::get('/owner/archive', [ArchiveController::class, 'index'])
 Route::get('/owner/refunds', [RefundsController::class, 'index'])
     ->middleware(['auth', 'verified', 'role:owner'])
     ->name('owner.refunds');
+
+Route::get('/owner/users', [UserManagementController::class, 'index'])
+    ->middleware(['auth', 'verified', 'role:owner'])
+    ->name('owner.users.index');
+
+Route::post('/owner/users', [UserManagementController::class, 'store'])
+    ->middleware(['auth', 'verified', 'role:owner'])
+    ->name('owner.users.store');
+
+Route::put('/owner/users/{user}', [UserManagementController::class, 'update'])
+    ->middleware(['auth', 'verified', 'role:owner'])
+    ->name('owner.users.update');
+
+Route::delete('/owner/users/{user}', [UserManagementController::class, 'destroy'])
+    ->middleware(['auth', 'verified', 'role:owner'])
+    ->name('owner.users.destroy');
 
 Route::get('/owner/refunds/data', [RefundsController::class, 'data'])
     ->middleware(['auth', 'verified', 'role:owner'])
@@ -266,9 +253,10 @@ Route::post('/delivery/calendar/status', [DeliveryCalendarController::class, 'st
     ->middleware(['auth', 'verified', 'role:delivery'])
     ->name('delivery.calendar.status');
 
-Route::get('/dashboard/cashier', CashierDashboardController::class)
-    ->middleware(['auth', 'verified', 'role:cashier'])
-    ->name('cashier.dashboard');
+Route::get('/dashboard/cashier', function () {
+    return redirect()->route('Checkout');
+})
+    ->middleware(['auth', 'verified', 'role:cashier']);
 
 // Keep the general dashboard for backward compatibility
 Route::get('dashboard', function () {
@@ -277,9 +265,9 @@ Route::get('dashboard', function () {
     return match ($user?->role) {
         'owner' => Inertia::render('Owner/Dashboard'),
         'staff' => redirect()->route('staff.dashboard'),
-        'cashier' => redirect()->route('cashier.dashboard'),
+        'cashier' => redirect()->route('Checkout'),
         'delivery' => redirect()->route('delivery.calendar'),
-        'superadmin' => Inertia::render('Admin/Superadmin'),
+        'administrator' => Inertia::render('Owner/Dashboard'),
             default => redirect('/'),
     };
 })->middleware(['auth', 'verified'])->name('dashboard');

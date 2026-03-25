@@ -45,7 +45,7 @@ class CalendarController extends Controller
                 $q->where('assigned_to_user_id', $userId)
                     ->orWhereNull('assigned_to_user_id');
             })
-            ->with(['sale:id,ref,total,created_at'])
+            ->with(['sale:id,ref,subtotal,total,created_at'])
             ->latest();
 
         $scheduled = (clone $base)
@@ -64,9 +64,6 @@ class CalendarController extends Controller
                 ->selectRaw('COALESCE(SUM(qty),0) as items')
                 ->value('items');
 
-            $saleTotal = (float) ($d->sale?->total ?? 0);
-            $fee = (float) ($d->delivery_fee ?? 0);
-
             return [
                 'id' => $d->id,
                 'ref' => $d->ref,
@@ -76,7 +73,7 @@ class CalendarController extends Controller
                 'customer_name' => $d->customer_name,
                 'address' => $d->address,
                 'delivery_fee' => $d->delivery_fee,
-                'delivery_total' => $saleTotal + $fee,
+                'delivery_total' => $d->orderGrandTotal(),
                 'items' => (int) ($itemsCount ?? 0),
                 'sale' => $d->sale ? [
                     'ref' => $d->sale->ref,

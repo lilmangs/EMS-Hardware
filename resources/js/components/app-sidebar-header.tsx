@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { usePage, router } from '@inertiajs/react';
 import { Bell, ChevronDown } from 'lucide-react';
+import { Breadcrumbs } from '@/components/breadcrumbs';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -15,6 +16,7 @@ import { useMobileNavigation } from '@/hooks/use-mobile-navigation';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useInitials } from '@/hooks/use-initials';
 import { SidebarTrigger } from '@/components/ui/sidebar';
+import type { BreadcrumbItem } from '@/types';
 import type { User } from '@/types/auth';
 
 type InventoryItem = {
@@ -24,7 +26,7 @@ type InventoryItem = {
     reorder_level: number;
 };
 
-export function AppSidebarHeader() {
+export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: BreadcrumbItem[] }) {
     const { auth } = usePage().props as { auth: { user: User } };
     const userRole = auth?.user?.role;
     const branchKey = auth?.user?.branch_key;
@@ -226,6 +228,13 @@ export function AppSidebarHeader() {
                                    
                             </div>
                         </div>
+
+                        {breadcrumbs.length > 0 && (
+                            <div className="ml-8 hidden items-center text-xs text-muted-foreground sm:flex border-l-3 pl-6 border-orange-300">
+                                <Breadcrumbs breadcrumbs={breadcrumbs} />
+                            </div>
+                        )}
+
                         <div className="ml-20 hidden flex-col gap-1 text-xs md:flex">
                             <div className="text-muted-foreground">
                                 {formattedDate} ({formattedTime})

@@ -3,7 +3,6 @@ import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -11,7 +10,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { 
     Search, 
     Filter, 
-    Download, 
     User, 
     ShoppingCart, 
     Package, 
@@ -236,10 +234,6 @@ export default function ActivityLog() {
                                 <SelectItem value="90days">Last 90 Days</SelectItem>
                             </SelectContent>
                         </Select>
-                        <Button variant="outline">
-                            <Download className="mr-2 h-4 w-4" />
-                            Export
-                        </Button>
                     </div>
                 </div>
 

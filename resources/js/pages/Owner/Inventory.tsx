@@ -43,13 +43,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
-const breadcrumbs: BreadcrumbItem[] = [
-    {
-        title: 'Inventory',
-        href: '/inventory',
-    },
-];
-
 type InventoryItem = {
     productId: number;
     sku: string;
@@ -63,6 +56,7 @@ type InventoryItem = {
     defectiveQty: number;
     reorderLevel: number;
     price: number;
+    purchaseCost?: number;
     lastUpdated: string;
     minStock: number;
     maxStock: number;
@@ -76,6 +70,7 @@ type NewInventoryItem = {
     stock: number;
     reorderLevel: number;
     price: number;
+    purchaseCost: number;
     minStock: number;
     maxStock: number;
 };
@@ -86,6 +81,15 @@ export default function Inventory() {
     const userBranchKey = user?.branch_key ?? null;
     const isBranchRestrictedUser = !!user && ['staff', 'cashier', 'delivery'].includes(user.role) && !!userBranchKey;
     const canRestock = !!user && user.role === 'staff';
+
+    const inventoryTitle = user?.role === 'owner' ? 'Inventory Monitoring' : 'Inventory Management';
+
+    const breadcrumbs: BreadcrumbItem[] = [
+        {
+            title: inventoryTitle,
+            href: '/inventory',
+        },
+    ];
 
     const { branch: globalBranch, setBranch: setGlobalBranch } = useBranchFilter();
 
@@ -127,6 +131,7 @@ export default function Inventory() {
         stock: 1,
         reorderLevel: 10,
         price: 0,
+        purchaseCost: 0,
         minStock: 5,
         maxStock: 50,
     });
@@ -185,6 +190,7 @@ export default function Inventory() {
                     defectiveQty,
                     reorderLevel: Number(it.reorder_level) || 0,
                     price: Number(it.price) || 0,
+                    purchaseCost: Number(it.purchase_cost) || 0,
                     lastUpdated: it.updated_at ?? new Date().toISOString(),
                     minStock: Number(it.min_stock) || 0,
                     maxStock: Number(it.max_stock) || 0,
@@ -360,6 +366,7 @@ export default function Inventory() {
                         name,
                         category: newItem.category,
                         price: Number(newItem.price) || 0,
+                        purchase_cost: Number(newItem.purchaseCost) || 0,
                         branch_key: newItem.branchKey,
                         stock: Number(newItem.stock) || 0,
                         reorder_level: Number(newItem.reorderLevel) || 0,
@@ -381,6 +388,7 @@ export default function Inventory() {
                     stock: 1,
                     reorderLevel: 10,
                     price: 0,
+                    purchaseCost: 0,
                     minStock: 5,
                     maxStock: 50,
                 });
@@ -541,13 +549,17 @@ export default function Inventory() {
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
-            <Head title="Inventory Management" />
+            <Head title={inventoryTitle} />
             <div className="space-y-6 p-6">
                 {/* Header */}
                 <div className="flex items-center justify-between">
                     <div>
-                        <h1 className="text-3xl font-bold">Inventory Management</h1>
-                        <p className="text-muted-foreground">Manage stock levels and products across branches</p>
+                        <h1 className="text-3xl font-bold">{inventoryTitle}</h1>
+                        <p className="text-muted-foreground">
+                            {user?.role === 'owner'
+                                ? 'Monitor stock levels and product status across branches'
+                                : 'Manage stock levels and products across branches'}
+                        </p>
                     </div>
                 </div>
 
@@ -822,12 +834,12 @@ export default function Inventory() {
                         }}
                     >
                         <DialogContent className="sm:max-w-3xl">
-                            <DialogHeader>
-                                <DialogTitle className="flex items-center gap-2">
-                                    <Plus className="h-5 w-5 text-green-600" />
+                            <DialogHeader className="bg-orange-600/30 dark:bg-orange-900/20 p-6 -mx-6 -mt-6 mb-6 border-b border-orange-100/50 dark:border-orange-900/30 rounded-t-lg">
+                                <DialogTitle className="flex items-center gap-2 text-orange-950 dark:text-orange-100">
+                                    <Plus className="h-5 w-5 text-green-600 dark:text-green-400" />
                                     Restock Product
                                 </DialogTitle>
-                                <DialogDescription>
+                                <DialogDescription className="text-orange-800/70 dark:text-orange-200/60">
                                     Add stock to <span className="font-semibold text-foreground">{restockItem?.name}</span>
                                 </DialogDescription>
                             </DialogHeader>
@@ -939,104 +951,165 @@ export default function Inventory() {
             )}
 
             {/* Product Details Dialog */}
-            <Dialog open={!!detailsItem} onOpenChange={(open) => { if (!open) setDetailsItem(null); }}>
-                <DialogContent className="sm:max-w-3xl">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <Info className="h-5 w-5" />
-                            Product Details
-                        </DialogTitle>
+            <Dialog
+                open={!!detailsItem}
+                onOpenChange={(open) => {
+                    if (!open) setDetailsItem(null);
+                }}
+            >
+                <DialogContent className="sm:max-w-4xl p-0 overflow-hidden border-none shadow-2xl transition-all duration-300">
+                    <DialogHeader className="bg-orange-600/30 dark:bg-orange-900/20 p-6 border-b border-orange-100/50 dark:border-orange-900/30">
+                        <div className="flex items-center justify-between">
+                            <div className="space-y-1">
+                                <DialogTitle className="flex items-center gap-2 text-2xl font-bold text-orange-950 dark:text-orange-100">
+                                    <Package className="h-6 w-6 text-orange-600" /> Product Details
+                                </DialogTitle>
+                                <DialogDescription className="text-orange-800/70 dark:text-orange-200/60">
+                                    Comprehensive stock levels and branch availability.
+                                </DialogDescription>
+                            </div>
+                            {detailsItem && (
+                                <Badge className="bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300 border-orange-200">
+                                    {detailsItem.branch}
+                                </Badge>
+                            )}
+                        </div>
                     </DialogHeader>
-                    {detailsItem && (() => {
+
+                    {!detailsItem ? (
+                        <div className="flex h-64 items-center justify-center text-muted-foreground italic">
+                            No details available.
+                        </div>
+                    ) : (() => {
                         const stockStatus = getStockStatus(detailsItem);
                         const StatusIcon = getStockStatusIcon(stockStatus);
                         const stockPct = Math.min(100, (detailsItem.stock / detailsItem.maxStock) * 100);
                         const imgUrl = productImageUrl(detailsItem.imagePath);
-                        return (
-                            <div className="grid gap-4 sm:grid-cols-2">
-                                <div className="space-y-4">
-                                    <div className="flex items-center justify-center rounded-lg bg-muted p-6">
-                                        {imgUrl ? (
-                                            <img src={imgUrl} alt={detailsItem.name} className="h-24 w-24 rounded-xl object-cover border" />
-                                        ) : (
-                                            <div className="h-16 w-16 rounded-xl bg-orange-100 flex items-center justify-center dark:bg-orange-950">
-                                                <Package className="h-8 w-8 text-orange-600" />
-                                            </div>
-                                        )}
-                                    </div>
 
-                                    <div className="rounded-lg border p-3 space-y-2">
-                                        <div className="flex justify-between items-center text-sm">
-                                            <span className="text-muted-foreground">Sellable Stock</span>
-                                            <div className="flex items-center gap-2">
-                                                <Badge variant={getStockStatusColor(stockStatus)} className="gap-1">
-                                                    <StatusIcon className="h-3 w-3" />
-                                                    {stockStatus.replace('-', ' ')}
+                        return (
+                            <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] h-[450px]">
+                                {/* Product Profile & Base Info */}
+                                <div className="bg-orange-50/20 dark:bg-orange-950/5 p-8 border-r border-orange-100/30 flex flex-col space-y-8 overflow-y-auto">
+                                    <div className="space-y-6">
+                                        <div className="aspect-square rounded-2xl bg-white dark:bg-black/20 border-2 border-orange-100/50 dark:border-orange-900/20 p-4 shadow-sm flex items-center justify-center overflow-hidden group">
+                                            {imgUrl ? (
+                                                <img
+                                                    src={imgUrl}
+                                                    alt={detailsItem.name}
+                                                    className="h-full w-full object-contain transition-transform duration-500 group-hover:scale-110"
+                                                />
+                                            ) : (
+                                                <Package className="h-16 w-16 text-orange-200 dark:text-orange-900/40" />
+                                            )}
+                                        </div>
+
+                                        <div>
+                                            <h3 className="text-xl font-bold text-orange-950 dark:text-orange-100 leading-tight">
+                                                {detailsItem.name}
+                                            </h3>
+                                            <div className="mt-2 flex flex-wrap gap-2">
+                                                <Badge variant="outline" className="font-mono text-[10px] h-5 px-1.5 py-0">
+                                                    SKU: {detailsItem.sku}
                                                 </Badge>
-                                                <span className="text-sm font-medium">{detailsItem.stock} / {detailsItem.maxStock}</span>
+                                                <Badge variant="secondary" className="text-[10px] h-5 bg-orange-100/50 px-1.5 py-0 border-orange-200/50">
+                                                    {detailsItem.category}
+                                                </Badge>
                                             </div>
                                         </div>
-                                        <Progress value={stockPct} className="h-2" />
-                                        <div className="flex justify-between text-xs text-muted-foreground">
-                                            <span>Min: {detailsItem.minStock}</span>
-                                            <span>Reorder at: {detailsItem.reorderLevel}</span>
-                                            <span>Max: {detailsItem.maxStock}</span>
+                                    </div>
+
+                                    <div className="space-y-3 mt-auto">
+                                        <div className="flex items-center justify-between p-3 rounded-xl bg-orange-100/30 dark:bg-orange-900/20 border border-orange-200/50">
+                                            <div className="text-[10px] font-bold uppercase tracking-widest text-orange-600">
+                                                Unit Price
+                                            </div>
+                                            <div className="text-xl font-black text-orange-700 dark:text-orange-300 tabular-nums">
+                                                ₱{detailsItem.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center justify-between p-3 rounded-xl bg-white dark:bg-black/20 border border-muted shadow-sm">
+                                            <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                                                Total Value
+                                            </div>
+                                            <div className="text-lg font-bold tabular-nums">
+                                                ₱{(detailsItem.price * detailsItem.stock).toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="space-y-3">
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm text-muted-foreground">Name</span>
-                                        <span className="text-sm font-medium">{detailsItem.name}</span>
+                                {/* Stock Details & Performance */}
+                                <div className="p-8 flex flex-col overflow-y-auto">
+                                    <div className="flex-1 space-y-8">
+                                        <section className="space-y-4">
+                                            <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                                                <Boxes className="h-3 w-3 text-orange-500" /> Stock Inventory Breakdown
+                                            </h4>
+                                            
+                                            <div className="grid grid-cols-3 gap-4">
+                                                <div className="p-4 rounded-2xl bg-muted/30 border space-y-1 hover:bg-muted/40 transition-colors">
+                                                    <p className="text-[10px] font-bold text-muted-foreground uppercase leading-none">Sellable</p>
+                                                    <p className="text-2xl font-black tabular-nums">{detailsItem.stock}</p>
+                                                </div>
+                                                <div className="p-4 rounded-2xl bg-muted/30 border space-y-1 hover:bg-muted/40 transition-colors">
+                                                    <p className="text-[10px] font-bold text-muted-foreground uppercase leading-none">Defective</p>
+                                                    <p className="text-2xl font-black tabular-nums text-destructive">{detailsItem.defectiveQty}</p>
+                                                </div>
+                                                <div className="p-4 rounded-2xl bg-muted/30 border space-y-1 hover:bg-muted/40 transition-colors">
+                                                    <p className="text-[10px] font-bold text-muted-foreground uppercase leading-none">Total Units</p>
+                                                    <p className="text-2xl font-black tabular-nums opacity-60">{detailsItem.totalStock}</p>
+                                                </div>
+                                            </div>
+                                        </section>
+
+                                        <section className="space-y-4">
+                                            <div className="flex items-center justify-between">
+                                                <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
+                                                    <TrendingUp className="h-3 w-3 text-green-500" /> Capacity & Thresholds
+                                                </h4>
+                                                <Badge variant={getStockStatusColor(stockStatus)} className="gap-1 px-2 py-0 h-5">
+                                                    <StatusIcon className="h-3 w-3" />
+                                                    {stockStatus.replace('-', ' ')}
+                                                </Badge>
+                                            </div>
+
+                                            <div className="p-6 rounded-2xl border bg-card/30 space-y-4 shadow-inner">
+                                                <div className="space-y-2">
+                                                    <div className="flex justify-between text-xs font-bold">
+                                                        <span>Current Utilization</span>
+                                                        <span>{Math.round(stockPct)}%</span>
+                                                    </div>
+                                                    <Progress value={stockPct} className="h-2" />
+                                                </div>
+                                                <div className="grid grid-cols-3 gap-8 pt-2">
+                                                    <div className="space-y-1 border-l-2 border-muted pl-3">
+                                                        <div className="text-[9px] font-bold text-muted-foreground uppercase">Min Stock</div>
+                                                        <div className="text-sm font-bold">{detailsItem.minStock}</div>
+                                                    </div>
+                                                    <div className="space-y-1 border-l-2 border-muted pl-3">
+                                                        <div className="text-[9px] font-bold text-muted-foreground uppercase">Target Level</div>
+                                                        <div className="text-sm font-bold">{detailsItem.reorderLevel}</div>
+                                                    </div>
+                                                    <div className="space-y-1 border-l-2 border-muted pl-3">
+                                                        <div className="text-[9px] font-bold text-muted-foreground uppercase">Max Capacity</div>
+                                                        <div className="text-sm font-bold">{detailsItem.maxStock}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </section>
                                     </div>
-                                    <div className="border-t" />
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm text-muted-foreground">SKU</span>
-                                        <span className="text-sm font-mono font-medium">{detailsItem.sku}</span>
-                                    </div>
-                                    <div className="border-t" />
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm text-muted-foreground">Category</span>
-                                        <Badge variant="outline">{detailsItem.category}</Badge>
-                                    </div>
-                                    <div className="border-t" />
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm text-muted-foreground">Branch</span>
-                                        <Badge variant="secondary">{detailsItem.branch}</Badge>
-                                    </div>
-                                    <div className="border-t" />
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm text-muted-foreground">Price</span>
-                                        <span className="text-sm font-semibold text-primary">₱{detailsItem.price.toFixed(2)}</span>
-                                    </div>
-                                    <div className="border-t" />
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm text-muted-foreground">Defective Qty</span>
-                                        <span className="text-sm font-medium">{detailsItem.defectiveQty}</span>
-                                    </div>
-                                    <div className="border-t" />
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm text-muted-foreground">Total Qty</span>
-                                        <span className="text-sm font-medium">{detailsItem.totalStock}</span>
-                                    </div>
-                                    <div className="border-t" />
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm text-muted-foreground">Stock Value</span>
-                                        <span className="text-sm font-semibold">₱{(detailsItem.price * detailsItem.stock).toLocaleString()}</span>
-                                    </div>
-                                    <div className="border-t" />
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-sm text-muted-foreground">Last Updated</span>
-                                        <span className="text-sm">
-                                            {new Date(detailsItem.lastUpdated).toLocaleDateString('en-US', {
-                                                month: 'short',
+
+                                    <div className="mt-8 pt-6 border-t flex items-center justify-between text-muted-foreground">
+                                        <div className="flex items-center gap-2 text-[10px] font-semibold italic">
+                                            <Clock className="h-3 w-3 text-orange-400" />
+                                            Last movement: {new Date(detailsItem.lastUpdated).toLocaleDateString(undefined, { 
+                                                month: 'short', 
                                                 day: 'numeric',
                                                 year: 'numeric',
                                                 hour: '2-digit',
-                                                minute: '2-digit',
+                                                minute: '2-digit'
                                             })}
-                                        </span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -1056,12 +1129,12 @@ export default function Inventory() {
                 }}
             >
                 <DialogContent className="sm:max-w-2xl">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
+                    <DialogHeader className="bg-orange-600/30 dark:bg-orange-900/20 p-6 -mx-6 -mt-6 mb-6 border-b border-orange-100/50 dark:border-orange-900/30 rounded-t-lg">
+                        <DialogTitle className="flex items-center gap-2 text-orange-950 dark:text-orange-100">
                             <Barcode className="h-5 w-5" />
                             Generate Barcodes
                         </DialogTitle>
-                        <DialogDescription>
+                        <DialogDescription className="text-orange-800/70 dark:text-orange-200/60">
                             Generate printable barcodes for{' '}
                             <span className="font-semibold text-foreground">{barcodeDialogItem?.name}</span>
                         </DialogDescription>

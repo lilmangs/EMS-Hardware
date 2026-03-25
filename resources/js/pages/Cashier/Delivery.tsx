@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { FileText, MoreHorizontal } from 'lucide-react';
+import { FileText, MoreHorizontal, Search } from 'lucide-react';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -42,6 +42,13 @@ type DeliveryStaff = {
 
 type DeliveryStatus = 'preparing' | 'out_for_delivery' | 'delivered';
 
+type SaleLineItem = {
+    name: string;
+    qty: number;
+    price: number | string;
+    line_total: number | string;
+};
+
 type DeliveryRow = {
     id: number;
     ref: string;
@@ -58,6 +65,7 @@ type DeliveryRow = {
     items: number;
     delivery_total?: number | string;
     sale: { id: number; ref: string; total: number | string; created_at: string } | null;
+    sale_items?: SaleLineItem[];
 };
 
 const peso = (n: number | string | null | undefined) => {
@@ -107,6 +115,25 @@ function statusBadge(status: DeliveryStatus) {
     );
 }
 
+function deliveryMatchesQuery(d: DeliveryRow, query: string): boolean {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    const chunks = [
+        d.ref,
+        d.customer_name,
+        d.address,
+        d.notes ?? '',
+        d.sale?.ref ?? '',
+        String(d.sale?.id ?? ''),
+        d.assigned_to?.name ?? '',
+        String(d.id),
+        d.status,
+        d.status === 'out_for_delivery' ? 'out for delivery' : '',
+        ...(d.sale_items ?? []).map((it) => it.name),
+    ];
+    return chunks.some((c) => c.toLowerCase().includes(q));
+}
+
 export default function Delivery() {
     const { props } = usePage<{ branch_key: string | null }>();
     const branchKey = props.branch_key;
@@ -121,6 +148,7 @@ export default function Delivery() {
 
     const [filterStatus, setFilterStatus] = useState<'all' | DeliveryStatus>('all');
     const [filterAssigned, setFilterAssigned] = useState<'all' | 'assigned' | 'unassigned'>('all');
+    const [searchQuery, setSearchQuery] = useState('');
 
     const [staff, setStaff] = useState<DeliveryStaff[]>([]);
     const [deliveries, setDeliveries] = useState<DeliveryRow[]>([]);
@@ -302,6 +330,11 @@ export default function Delivery() {
         return [{ id: 0, name: 'Unassigned', branch_key: branchKey ?? '' } as DeliveryStaff, ...staff];
     }, [branchKey, staff]);
 
+    const filteredDeliveries = useMemo(
+        () => deliveries.filter((d) => deliveryMatchesQuery(d, searchQuery)),
+        [deliveries, searchQuery],
+    );
+
     const openDeliveryDetails = useCallback((d: DeliveryRow) => {
         setSelectedDelivery(d);
         setIsDetailsOpen(true);
@@ -322,15 +355,15 @@ export default function Delivery() {
                         <DialogTrigger asChild>
                             <Button>Create Delivery</Button>
                         </DialogTrigger>
-                        <DialogContent className="!w-[86vw] !max-w-3xl">
-                            <DialogHeader>
+                        <DialogContent className="flex min-h-0 max-h-[min(90dvh,100dvh)] w-full max-w-[calc(100%-2rem)] flex-col gap-4 overflow-hidden p-4 sm:max-w-3xl sm:p-6">
+                            <DialogHeader className="shrink-0 space-y-1.5 text-left">
                                 <DialogTitle>Create Delivery</DialogTitle>
                                 <DialogDescription>
                                     Use a sale reference and enter delivery details.
                                 </DialogDescription>
                             </DialogHeader>
 
-                            <div className="max-h-[70vh] overflow-y-auto pr-1">
+                            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 [-webkit-overflow-scrolling:touch]">
                                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                                     <div className="space-y-2">
                                         <label className="text-sm font-medium">Sale Ref</label>
@@ -412,7 +445,7 @@ export default function Delivery() {
                             </div>
 
                             {(error || success) && (
-                                <div className="space-y-2">
+                                <div className="shrink-0 space-y-2">
                                     {error && (
                                         <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-200">
                                             {error}
@@ -426,13 +459,17 @@ export default function Delivery() {
                                 </div>
                             )}
 
-                            <DialogFooter className="gap-2">
+                            <DialogFooter className="shrink-0">
                                 <DialogClose asChild>
-                                    <Button type="button" variant="outline" disabled={isCreating}>
+                                    <Button type="button" variant="outline" disabled={isCreating} className="w-full sm:w-auto">
                                         Cancel
                                     </Button>
                                 </DialogClose>
-                                <Button onClick={createDelivery} disabled={isCreating} className="sm:min-w-[180px]">
+                                <Button
+                                    onClick={createDelivery}
+                                    disabled={isCreating}
+                                    className="w-full sm:min-w-[180px] sm:w-auto"
+                                >
                                     {isCreating ? 'Creating...' : 'Create Delivery'}
                                 </Button>
                             </DialogFooter>
@@ -476,6 +513,17 @@ export default function Delivery() {
                                 </Button>
                             </div>
                         </div>
+                        <div className="relative max-w-full sm:max-w-md">
+                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                                type="search"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="Search ref, customer, address, sale..."
+                                className="pl-9"
+                                aria-label="Search deliveries"
+                            />
+                        </div>
                     </CardHeader>
                     <CardContent>
                         <div className="overflow-hidden rounded-lg border">
@@ -502,12 +550,20 @@ export default function Delivery() {
                                                     {isLoading ? 'Loading...' : 'No deliveries found.'}
                                                 </TableCell>
                                             </TableRow>
+                                        ) : filteredDeliveries.length === 0 ? (
+                                            <TableRow>
+                                                <TableCell colSpan={10} className="py-10 text-center text-muted-foreground">
+                                                    {`No deliveries match "${searchQuery.trim()}". Try a different term or clear the search.`}
+                                                </TableCell>
+                                            </TableRow>
                                         ) : (
-                                            deliveries.map((d) => {
+                                            filteredDeliveries.map((d) => {
                                                 const assignedValue = d.assigned_to?.id ? String(d.assigned_to.id) : '0';
                                                 const fee = Number(d.delivery_fee) || 0;
                                                 const saleTotal = Number(d.sale?.total) || 0;
-                                                const total = Number(d.delivery_total) || saleTotal + fee;
+                                                const total =
+                                                    Number(d.delivery_total) ||
+                                                    saleTotal;
                                                 return (
                                                     <TableRow
                                                         key={d.id}
@@ -618,8 +674,8 @@ export default function Delivery() {
                         if (!open) setSelectedDelivery(null);
                     }}
                 >
-                    <DialogContent className="sm:max-w-5xl">
-                        <DialogHeader>
+                    <DialogContent className="flex min-h-0 max-h-[min(90dvh,100dvh)] w-full max-w-[calc(100%-2rem)] flex-col gap-4 overflow-hidden p-4 sm:max-w-5xl sm:p-6">
+                        <DialogHeader className="shrink-0 space-y-1.5 text-left">
                             <DialogTitle>Delivery Details</DialogTitle>
                             <DialogDescription>View delivery information.</DialogDescription>
                         </DialogHeader>
@@ -627,7 +683,8 @@ export default function Delivery() {
                         {!selectedDelivery ? (
                             <div className="text-sm text-muted-foreground">No delivery selected.</div>
                         ) : (
-                            <div className="grid gap-4 lg:grid-cols-2">
+                            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain [-webkit-overflow-scrolling:touch]">
+                                <div className="grid gap-4 lg:grid-cols-2">
                                 <div className="space-y-4">
                                     <div className="grid gap-3 rounded-md border p-4 text-sm sm:grid-cols-2">
                                         <div>
@@ -689,6 +746,25 @@ export default function Delivery() {
                                         </div>
                                     </div>
 
+                                    {(selectedDelivery.sale_items?.length ?? 0) > 0 && (
+                                        <div className="rounded-md border">
+                                            <div className="border-b px-4 py-3 text-sm font-medium">Items</div>
+                                            <div className="divide-y">
+                                                {selectedDelivery.sale_items!.map((line, idx) => (
+                                                    <div key={idx} className="flex items-start justify-between gap-3 px-4 py-3 text-sm">
+                                                        <div className="min-w-0">
+                                                            <div className="break-words font-medium leading-snug">{line.name}</div>
+                                                            <div className="text-muted-foreground text-xs tabular-nums">
+                                                                {line.qty} × {peso(line.price)}
+                                                            </div>
+                                                        </div>
+                                                        <div className="shrink-0 font-medium tabular-nums">{peso(line.line_total)}</div>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
                                     <div className="rounded-md border">
                                         <div className="border-b px-4 py-3 text-sm font-medium">Totals</div>
                                         <div className="space-y-2 p-4 text-sm">
@@ -699,11 +775,15 @@ export default function Delivery() {
                                             <div className="flex items-center justify-between gap-3">
                                                 <span className="text-muted-foreground">Total</span>
                                                 <span className="font-semibold tabular-nums">
-                                                    {peso(selectedDelivery.delivery_total ?? (Number(selectedDelivery.sale?.total) || 0) + (Number(selectedDelivery.delivery_fee) || 0))}
+                                                    {peso(
+                                                        (selectedDelivery.delivery_total ??
+                                                            Number(selectedDelivery.sale?.total)) || 0,
+                                                    )}
                                                 </span>
                                             </div>
                                         </div>
                                     </div>
+                                </div>
                                 </div>
                             </div>
                         )}

@@ -46,4 +46,28 @@ class PosDelivery extends Model
     {
         return $this->belongsTo(User::class, 'assigned_by_user_id');
     }
+
+    /**
+     * Grand total the customer pays (items + delivery fee).
+     * After cashier creates a delivery with a fee, {@see PosSale::$total} is increased by that fee;
+     * do not add delivery_fee again on top of total.
+     */
+    public function orderGrandTotal(): float
+    {
+        $fee = (float) ($this->delivery_fee ?? 0);
+        $sale = $this->sale;
+
+        if (!$sale) {
+            return round($fee, 2);
+        }
+
+        $saleTotal = (float) ($sale->total ?? 0);
+        $subtotal = (float) ($sale->subtotal ?? 0);
+
+        if ($fee > 0.00001 && abs($saleTotal - $subtotal) < 0.01) {
+            return round($subtotal + $fee, 2);
+        }
+
+        return round($saleTotal, 2);
+    }
 }

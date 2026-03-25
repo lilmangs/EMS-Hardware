@@ -36,7 +36,7 @@ class DeliveryMonitoringController extends Controller
         }
 
         $query = PosDelivery::query()
-            ->with(['sale:id,ref,branch_key,total,created_at'])
+            ->with(['sale:id,ref,branch_key,subtotal,total,created_at'])
             ->latest();
 
         if ($date !== 'all') {
@@ -59,9 +59,6 @@ class DeliveryMonitoringController extends Controller
                     ->selectRaw('COALESCE(SUM(qty),0) as items')
                     ->value('items');
 
-                $saleTotal = (float) ($d->sale?->total ?? 0);
-                $fee = (float) ($d->delivery_fee ?? 0);
-
                 return [
                     'id' => (string) ($d->ref ?? $d->id),
                     'order_id' => (string) ($d->sale?->ref ?? ''),
@@ -71,7 +68,7 @@ class DeliveryMonitoringController extends Controller
                     'customer' => $d->customer_name,
                     'address' => $d->address,
                     'items' => (int) ($itemsCount ?? 0),
-                    'total' => $saleTotal + $fee,
+                    'total' => $d->orderGrandTotal(),
                     'started_at' => optional($d->created_at)->toDateTimeString(),
                     'proof_photo_url' => $d->proof_photo_path ? Storage::disk('public')->url($d->proof_photo_path) : null,
                 ];

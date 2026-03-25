@@ -32,7 +32,7 @@ class UserFactory extends Factory
             'two_factor_secret' => null,
             'two_factor_recovery_codes' => null,
             'two_factor_confirmed_at' => null,
-            'role' => fake()->randomElement(['owner', 'cashier', 'delivery', 'superadmin']),
+            'role' => fake()->randomElement(['owner', 'staff', 'cashier', 'delivery']),
         ];
     }
 

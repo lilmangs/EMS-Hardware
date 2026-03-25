@@ -14,12 +14,12 @@ import type { BreadcrumbItem } from '@/types';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
-        title: 'Superadmin Dashboard',
-        href: '/Superadmin',
+        title: 'Owner Dashboard',
+        href: '/dashboard',
     },
     {
-        title: 'User Management',
-        href: '/Superadmin/Users',
+        title: 'Staff Management',
+        href: '/owner/users',
     },
 ];
 
@@ -40,8 +40,6 @@ export default function UserManagement({ users }: Props) {
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
     const [editingUser, setEditingUser] = useState<User | null>(null);
-
-    const isEditingSuperadmin = editingUser?.role === 'superadmin';
 
     const [createForm, setCreateForm] = useState({
         name: '',
@@ -66,19 +64,23 @@ export default function UserManagement({ users }: Props) {
     const isBranchRequiredForCreate = ['cashier', 'delivery', 'staff'].includes(createRole);
     const isBranchRequiredForEdit = ['cashier', 'delivery', 'staff'].includes(editRole);
 
+    const resetCreateForm = () => {
+        setCreateForm({
+            name: '',
+            email: '',
+            password: '',
+            password_confirmation: '',
+            role: '',
+            branch_key: '',
+        });
+    };
+
     const handleCreateUser = (e: React.FormEvent) => {
         e.preventDefault();
-        router.post('/Superadmin/Users', createForm, {
+        router.post('/owner/users', createForm, {
             onSuccess: () => {
                 setIsCreateDialogOpen(false);
-                setCreateForm({
-                    name: '',
-                    email: '',
-                    password: '',
-                    password_confirmation: '',
-                    role: '',
-                    branch_key: '',
-                });
+                resetCreateForm();
             },
             onError: (errors) => {
                 console.error('Error creating user:', errors);
@@ -103,14 +105,26 @@ export default function UserManagement({ users }: Props) {
         setIsEditDialogOpen(true);
     };
 
+    const resetEditForm = () => {
+        setEditForm({
+            name: '',
+            email: '',
+            password: '',
+            password_confirmation: '',
+            role: '',
+            branch_key: '',
+        });
+        setEditingUser(null);
+    };
+
     const handleUpdateUser = (e: React.FormEvent) => {
         e.preventDefault();
         if (!editingUser) return;
 
-        router.put(`/Superadmin/Users/${editingUser.id}`, editForm, {
+        router.put(`/owner/users/${editingUser.id}`, editForm, {
             onSuccess: () => {
                 setIsEditDialogOpen(false);
-                setEditingUser(null);
+                resetEditForm();
             },
             onError: (errors) => {
                 console.error('Error updating user:', errors);
@@ -124,7 +138,7 @@ export default function UserManagement({ users }: Props) {
 
     const handleDeleteUser = (userId: number) => {
         if (confirm('Are you sure you want to delete this user? This action cannot be undone.')) {
-            router.delete(`/Superadmin/Users/${userId}`, {
+            router.delete(`/owner/users/${userId}`, {
                 onSuccess: () => {
                     console.log('User deleted successfully');
                 },
@@ -149,7 +163,6 @@ export default function UserManagement({ users }: Props) {
 
     const getRoleBadgeVariant = (role: string) => {
         switch (role) {
-            case 'superadmin': return 'destructive';
             case 'owner': return 'default';
             case 'cashier': return 'secondary';
             case 'delivery': return 'outline';
@@ -159,53 +172,63 @@ export default function UserManagement({ users }: Props) {
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
-            <Head title="User Management" />
+            <Head title="Staff Management" />
             <div className="space-y-6 p-6">
                 {/* Header */}
                 <div className="flex items-center justify-between">
                     <div>
                         <h1 className="text-3xl font-bold">User Management</h1>
-                        <p className="text-muted-foreground">Create and manage user accounts across all roles</p>
+                        <p className="text-muted-foreground">Create and manage accounts for staff, cashiers, and delivery personnel</p>
                     </div>
-                    <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                    <Dialog
+                        open={isCreateDialogOpen}
+                        onOpenChange={(open) => {
+                            setIsCreateDialogOpen(open);
+                            if (!open) resetCreateForm();
+                        }}
+                    >
                         <DialogTrigger asChild>
                             <Button className="gap-2">
                                 <Plus className="h-4 w-4" />
-                                Create User
+                                Add user
                             </Button>
                         </DialogTrigger>
-                        <DialogContent className="sm:max-w-[425px]">
-                            <DialogHeader>
-                                <DialogTitle>Create New User</DialogTitle>
-                                <DialogDescription>
-                                    Add a new user account with the specified role and permissions.
+                        <DialogContent className="sm:max-w-3xl">
+                            <DialogHeader className="bg-orange-600/30 dark:bg-orange-900/20 p-6 -mx-6 -mt-6 mb-6 border-b border-orange-100/50 dark:border-orange-900/30 rounded-t-lg">
+                                <DialogTitle className="flex items-center gap-2 text-orange-950 dark:text-orange-100">
+                                    <Users className="h-5 w-5" /> Add Staff Member
+                                </DialogTitle>
+                                <DialogDescription className="text-orange-800/70 dark:text-orange-200/60">
+                                    Create a new staff account. Assign to a branch for tracking and monitoring.
                                 </DialogDescription>
                             </DialogHeader>
                             <form onSubmit={handleCreateUser}>
-                                <div className="grid gap-4 py-4">
-                                    <div className="grid grid-cols-4 items-center gap-4">
-                                        <Label htmlFor="name" className="text-right">Name</Label>
+                                <div className="grid grid-cols-1 gap-6 py-2 sm:grid-cols-2">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="create-name">Full Name</Label>
                                         <Input
-                                            id="name"
+                                            id="create-name"
+                                            autoComplete="name"
                                             value={createForm.name}
                                             onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
-                                            className="col-span-3"
                                             required
+                                            className="focus-visible:ring-orange-500"
                                         />
                                     </div>
-                                    <div className="grid grid-cols-4 items-center gap-4">
-                                        <Label htmlFor="email" className="text-right">Email</Label>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="create-email">Email Address</Label>
                                         <Input
-                                            id="email"
+                                            id="create-email"
                                             type="email"
+                                            autoComplete="email"
                                             value={createForm.email}
                                             onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
-                                            className="col-span-3"
                                             required
+                                            className="focus-visible:ring-orange-500"
                                         />
                                     </div>
-                                    <div className="grid grid-cols-4 items-center gap-4">
-                                        <Label htmlFor="role" className="text-right">Role</Label>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="create-role">System Role</Label>
                                         <Select
                                             value={createForm.role}
                                             onValueChange={(value) =>
@@ -216,23 +239,31 @@ export default function UserManagement({ users }: Props) {
                                                 })
                                             }
                                         >
-                                            <SelectTrigger className="col-span-3">
-                                                <SelectValue placeholder="Select a role" />
+                                            <SelectTrigger id="create-role" className="focus:ring-orange-500">
+                                                <SelectValue placeholder="Select role" />
                                             </SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="owner">Owner</SelectItem>
                                                 <SelectItem value="staff">Staff</SelectItem>
                                                 <SelectItem value="cashier">Cashier</SelectItem>
                                                 <SelectItem value="delivery">Delivery</SelectItem>
-                                                <SelectItem value="superadmin">Superadmin</SelectItem>
                                             </SelectContent>
                                         </Select>
                                     </div>
-                                    <div className="grid grid-cols-4 items-center gap-4">
-                                        <Label htmlFor="branch" className="text-right">Branch</Label>
-                                        <Select value={createForm.branch_key} onValueChange={(value) => setCreateForm({ ...createForm, branch_key: value })}>
-                                            <SelectTrigger className="col-span-3" disabled={!isBranchRequiredForCreate}>
-                                                <SelectValue placeholder={isBranchRequiredForCreate ? 'Select a branch' : 'All Branches'} />
+                                    <div className="space-y-2">
+                                        <Label htmlFor="create-branch">Assigned Branch</Label>
+                                        <Select
+                                            value={createForm.branch_key || undefined}
+                                            onValueChange={(value) => setCreateForm({ ...createForm, branch_key: value })}
+                                        >
+                                            <SelectTrigger id="create-branch" disabled={!isBranchRequiredForCreate} className="focus:ring-orange-500">
+                                                <SelectValue
+                                                    placeholder={
+                                                        isBranchRequiredForCreate
+                                                            ? 'Select branch'
+                                                            : 'Global Access (N/A)'
+                                                    }
+                                                />
                                             </SelectTrigger>
                                             <SelectContent>
                                                 <SelectItem value="lagonglong">Lagonglong Main Branch</SelectItem>
@@ -240,31 +271,55 @@ export default function UserManagement({ users }: Props) {
                                             </SelectContent>
                                         </Select>
                                     </div>
-                                    <div className="grid grid-cols-4 items-center gap-4">
-                                        <Label htmlFor="password" className="text-right">Password</Label>
-                                        <Input
-                                            id="password"
-                                            type="password"
-                                            value={createForm.password}
-                                            onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
-                                            className="col-span-3"
-                                            required
-                                        />
-                                    </div>
-                                    <div className="grid grid-cols-4 items-center gap-4">
-                                        <Label htmlFor="confirm" className="text-right">Confirm</Label>
-                                        <Input
-                                            id="confirm"
-                                            type="password"
-                                            value={createForm.password_confirmation}
-                                            onChange={(e) => setCreateForm({ ...createForm, password_confirmation: e.target.value })}
-                                            className="col-span-3"
-                                            required
-                                        />
+                                </div>
+
+                                <div className="mt-4 rounded-xl border border-orange-100 bg-orange-50/30 dark:bg-orange-950/10 dark:border-orange-900/20 p-4">
+                                    <div className="mb-3 text-xs font-bold uppercase tracking-widest text-orange-800/70 dark:text-orange-200/60">Authentication</div>
+                                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="create-password">Password</Label>
+                                            <Input
+                                                id="create-password"
+                                                type="password"
+                                                autoComplete="new-password"
+                                                value={createForm.password}
+                                                onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
+                                                required
+                                                minLength={8}
+                                                placeholder="Min 8 chars"
+                                                className="focus-visible:ring-orange-500"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <Label htmlFor="create-password-confirm">Confirm Password</Label>
+                                            <Input
+                                                id="create-password-confirm"
+                                                type="password"
+                                                autoComplete="new-password"
+                                                value={createForm.password_confirmation}
+                                                onChange={(e) =>
+                                                    setCreateForm({ ...createForm, password_confirmation: e.target.value })
+                                                }
+                                                required
+                                                placeholder="Repeat matching password"
+                                                className="focus-visible:ring-orange-500"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
-                                <DialogFooter>
-                                    <Button type="submit">Create User</Button>
+
+                                <DialogFooter className="mt-6 gap-2 sm:justify-end">
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() => {
+                                            setIsCreateDialogOpen(false);
+                                            resetCreateForm();
+                                        }}
+                                    >
+                                        Cancel
+                                    </Button>
+                                    <Button type="submit" className="bg-orange-600 hover:bg-orange-700 text-white shadow-md">Create User Account</Button>
                                 </DialogFooter>
                             </form>
                         </DialogContent>
@@ -308,12 +363,12 @@ export default function UserManagement({ users }: Props) {
 
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                            <CardTitle className="text-sm font-medium">Superadmins</CardTitle>
+                            <CardTitle className="text-sm font-medium">Delivery Staff</CardTitle>
                             <Users className="h-4 w-4 text-muted-foreground" />
                         </CardHeader>
                         <CardContent>
-                            <div className="text-2xl font-bold">{users.filter(u => u.role === 'superadmin').length}</div>
-                            <p className="text-xs text-muted-foreground">System administrators</p>
+                            <div className="text-2xl font-bold">{users.filter(u => u.role === 'delivery').length}</div>
+                            <p className="text-xs text-muted-foreground">Delivery personnel</p>
                         </CardContent>
                     </Card>
                 </div>
@@ -338,7 +393,19 @@ export default function UserManagement({ users }: Props) {
                             </TableHeader>
                             <TableBody>
                                 {users.map((user) => (
-                                    <TableRow key={user.id}>
+                                    <TableRow
+                                        key={user.id}
+                                        className="cursor-pointer hover:bg-muted/50 transition-colors"
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={() => handleEditUser(user)}
+                                        onKeyDown={(e) => {
+                                            if (e.key === 'Enter' || e.key === ' ') {
+                                                e.preventDefault();
+                                                handleEditUser(user);
+                                            }
+                                        }}
+                                    >
                                         <TableCell className="font-medium">{user.name}</TableCell>
                                         <TableCell>{user.email}</TableCell>
                                         <TableCell>
@@ -367,7 +434,6 @@ export default function UserManagement({ users }: Props) {
                                                     variant="outline"
                                                     size="sm"
                                                     onClick={() => handleDeleteUser(user.id)}
-                                                    disabled={user.role === 'superadmin'}
                                                 >
                                                     <Trash2 className="h-4 w-4" />
                                                 </Button>
@@ -381,39 +447,51 @@ export default function UserManagement({ users }: Props) {
                 </Card>
 
                 {/* Edit User Dialog */}
-                <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
-                    <DialogContent className="sm:max-w-[425px]">
-                        <DialogHeader>
-                            <DialogTitle>Edit User</DialogTitle>
-                            <DialogDescription>
-                                Update user information and role.
+                <Dialog
+                    open={isEditDialogOpen}
+                    onOpenChange={(open) => {
+                        setIsEditDialogOpen(open);
+                        if (!open) resetEditForm();
+                    }}
+                >
+                    <DialogContent className="sm:max-w-3xl">
+                        <DialogHeader className="bg-orange-600/30 dark:bg-orange-900/20 p-6 -mx-6 -mt-6 mb-6 border-b border-orange-100/50 dark:border-orange-900/30 rounded-t-lg">
+                            <DialogTitle className="flex items-center gap-2 text-orange-950 dark:text-orange-100">
+                                <Pencil className="h-5 w-5" /> Edit Staff Member
+                            </DialogTitle>
+                            <DialogDescription className="text-orange-800/70 dark:text-orange-200/60">
+                                {editingUser
+                                    ? `Update account for ${editingUser.name}. Leave password blank to keep current.`
+                                    : 'Update user information and role.'}
                             </DialogDescription>
                         </DialogHeader>
                         <form onSubmit={handleUpdateUser}>
-                            <div className="grid gap-4 py-4">
-                                <div className="grid grid-cols-4 items-center gap-4">
-                                    <Label htmlFor="edit-name" className="text-right">Name</Label>
+                            <div className="grid grid-cols-1 gap-6 py-2 sm:grid-cols-2">
+                                <div className="space-y-2">
+                                    <Label htmlFor="edit-name">Full Name</Label>
                                     <Input
                                         id="edit-name"
+                                        autoComplete="name"
                                         value={editForm.name}
                                         onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-                                        className="col-span-3"
                                         required
+                                        className="focus-visible:ring-orange-500"
                                     />
                                 </div>
-                                <div className="grid grid-cols-4 items-center gap-4">
-                                    <Label htmlFor="edit-email" className="text-right">Email</Label>
+                                <div className="space-y-2">
+                                    <Label htmlFor="edit-email">Email Address</Label>
                                     <Input
                                         id="edit-email"
                                         type="email"
+                                        autoComplete="email"
                                         value={editForm.email}
                                         onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
-                                        className="col-span-3"
                                         required
+                                        className="focus-visible:ring-orange-500"
                                     />
                                 </div>
-                                <div className="grid grid-cols-4 items-center gap-4">
-                                    <Label htmlFor="edit-role" className="text-right">Role</Label>
+                                <div className="space-y-2">
+                                    <Label htmlFor="edit-role">System Role</Label>
                                     <Select
                                         value={editForm.role}
                                         onValueChange={(value) =>
@@ -423,28 +501,34 @@ export default function UserManagement({ users }: Props) {
                                                 branch_key: value === 'owner' ? '' : editForm.branch_key,
                                             })
                                         }
-                                        disabled={isEditingSuperadmin}
                                     >
-                                        <SelectTrigger className="col-span-3" disabled={isEditingSuperadmin}>
-                                            <SelectValue placeholder="Select a role" />
+                                        <SelectTrigger id="edit-role" className="focus:ring-orange-500">
+                                            <SelectValue placeholder="Select role" />
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="owner">Owner</SelectItem>
                                             <SelectItem value="staff">Staff</SelectItem>
                                             <SelectItem value="cashier">Cashier</SelectItem>
                                             <SelectItem value="delivery">Delivery</SelectItem>
-                                            <SelectItem value="superadmin">Superadmin</SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
-                                <div className="grid grid-cols-4 items-center gap-4">
-                                    <Label htmlFor="edit-branch" className="text-right">Branch</Label>
+                                <div className="space-y-2">
+                                    <Label htmlFor="edit-branch">Assigned Branch</Label>
                                     <Select
                                         value={editForm.branch_key}
                                         onValueChange={(value) => setEditForm({ ...editForm, branch_key: value })}
                                     >
-                                        <SelectTrigger className="col-span-3" disabled={!isBranchRequiredForEdit}>
-                                            <SelectValue placeholder={isBranchRequiredForEdit ? 'Select a branch' : 'All Branches'} />
+                                        <SelectTrigger
+                                            id="edit-branch"
+                                            disabled={!isBranchRequiredForEdit}
+                                            className="focus:ring-orange-500"
+                                        >
+                                            <SelectValue
+                                                placeholder={
+                                                    isBranchRequiredForEdit ? 'Select branch' : 'Global Access (N/A)'
+                                                }
+                                            />
                                         </SelectTrigger>
                                         <SelectContent>
                                             <SelectItem value="lagonglong">Lagonglong Main Branch</SelectItem>
@@ -452,20 +536,52 @@ export default function UserManagement({ users }: Props) {
                                         </SelectContent>
                                     </Select>
                                 </div>
-                                <div className="grid grid-cols-4 items-center gap-4">
-                                    <Label htmlFor="edit-password" className="text-right">New Password</Label>
-                                    <Input
-                                        id="edit-password"
-                                        type="password"
-                                        value={editForm.password}
-                                        onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
-                                        className="col-span-3"
-                                        placeholder="Leave blank to keep current"
-                                    />
+                            </div>
+
+                            <div className="mt-4 rounded-xl border border-orange-100 bg-orange-50/30 dark:bg-orange-950/10 dark:border-orange-900/20 p-4">
+                                <div className="mb-3 text-xs font-bold uppercase tracking-widest text-orange-800/70 dark:text-orange-200/60">Change Password (Optional)</div>
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="edit-password">New password</Label>
+                                        <Input
+                                            id="edit-password"
+                                            type="password"
+                                            autoComplete="new-password"
+                                            value={editForm.password}
+                                            onChange={(e) => setEditForm({ ...editForm, password: e.target.value })}
+                                            placeholder="Leave blank to keep current"
+                                            className="focus-visible:ring-orange-500"
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="edit-password-confirm">Confirm new password</Label>
+                                        <Input
+                                            id="edit-password-confirm"
+                                            type="password"
+                                            autoComplete="new-password"
+                                            value={editForm.password_confirmation}
+                                            onChange={(e) =>
+                                                setEditForm({ ...editForm, password_confirmation: e.target.value })
+                                            }
+                                            placeholder="Repeat new password"
+                                            className="focus-visible:ring-orange-500"
+                                        />
+                                    </div>
                                 </div>
                             </div>
-                            <DialogFooter>
-                                <Button type="submit">Update User</Button>
+
+                            <DialogFooter className="mt-6 gap-2 sm:justify-end">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => {
+                                        setIsEditDialogOpen(false);
+                                        resetEditForm();
+                                    }}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button type="submit" className="bg-orange-600 hover:bg-orange-700 text-white shadow-md">Save Changes</Button>
                             </DialogFooter>
                         </form>
                     </DialogContent>

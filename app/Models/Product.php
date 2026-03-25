@@ -19,6 +19,7 @@ class Product extends Model
         'description',
         'category',
         'price',
+        'purchase_cost',
         'stock',
         'restocking_level',
         'status',
@@ -30,6 +31,7 @@ class Product extends Model
 
     protected $casts = [
         'price' => 'decimal:2',
+        'purchase_cost' => 'decimal:2',
         'stock' => 'integer',
         'restocking_level' => 'integer',
         'defective_at' => 'datetime',

@@ -70,7 +70,12 @@ class DeliveryController extends Controller
         $query = PosDelivery::query()
             ->where('branch_key', $branchKey)
             ->with([
-                'sale:id,ref,branch_key,total,created_at',
+                'sale' => function ($q) {
+                    $q->select('id', 'ref', 'branch_key', 'subtotal', 'total', 'created_at');
+                },
+                'sale.items' => function ($q) {
+                    $q->select('id', 'pos_sale_id', 'name', 'qty', 'price', 'line_total');
+                },
                 'assignedTo:id,name',
             ])
             ->latest();
@@ -89,12 +94,8 @@ class DeliveryController extends Controller
             ->limit(150)
             ->get()
             ->map(function (PosDelivery $d) {
-                $saleId = $d->pos_sale_id;
-
-                $itemsCount = DB::table('pos_sale_items')
-                    ->where('pos_sale_id', $saleId)
-                    ->selectRaw('COALESCE(SUM(qty),0) as items')
-                    ->value('items');
+                $saleItems = $d->sale?->items;
+                $itemsCount = $saleItems ? (int) $saleItems->sum('qty') : 0;
 
                 return [
                     'id' => $d->id,
@@ -118,8 +119,16 @@ class DeliveryController extends Controller
                         'total' => $d->sale->total,
                         'created_at' => $d->sale->created_at,
                     ] : null,
-                    'delivery_total' => (float) ((float) ($d->sale?->total ?? 0) + (float) ($d->delivery_fee ?? 0)),
-                    'items' => (int) ($itemsCount ?? 0),
+                    'sale_items' => $saleItems
+                        ? $saleItems->map(fn ($it) => [
+                            'name' => $it->name,
+                            'qty' => (int) $it->qty,
+                            'price' => $it->price,
+                            'line_total' => $it->line_total,
+                        ])->values()->all()
+                        : [],
+                    'delivery_total' => $d->orderGrandTotal(),
+                    'items' => $itemsCount,
                 ];
             })
             ->values();

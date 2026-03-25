@@ -39,6 +39,7 @@ type Product = {
     name: string;
     description?: string | null;
     price: number | string;
+    purchase_cost?: number | string;
     category: string;
     color?: string | null;
     stock: number;
@@ -353,6 +354,7 @@ export default function Products() {
         description: '',
         category: '',
         price: 0,
+        purchase_cost: 0,
         stock: 0,
         restocking_level: 0,
         image_path: null,
@@ -587,6 +589,7 @@ export default function Products() {
         form.append('color', String(newProduct.color ?? ''));
         form.append('description', String(newProduct.description ?? ''));
         form.append('price', String(newProduct.price ?? 0));
+        form.append('purchase_cost', String(newProduct.purchase_cost ?? 0));
         form.append('stock', String(newProduct.stock ?? 0));
         form.append('restocking_level', String(newProduct.restocking_level ?? 0));
 
@@ -609,6 +612,7 @@ export default function Products() {
                     description: '',
                     category: '',
                     price: 0,
+                    purchase_cost: 0,
                     stock: 0,
                     restocking_level: 0,
                     image_path: null,
@@ -640,6 +644,7 @@ export default function Products() {
         form.append('description', String(editProduct.description ?? ''));
         form.append('category', editProduct.category ?? '');
         form.append('price', String(Number(editProduct.price) || 0));
+        form.append('purchase_cost', String(Number(editProduct.purchase_cost) || 0));
         form.append('restocking_level', String(Number(editProduct.restocking_level) || 0));
         form.append('status', status);
         if (editProductImage) {
@@ -918,102 +923,116 @@ export default function Products() {
                         if (!open) setDetailsProduct(null);
                     }}
                 >
-                    <DialogContent className="sm:max-w-2xl">
-                        <DialogHeader>
-                            <DialogTitle>Product Details</DialogTitle>
-                            <DialogDescription>View product information.</DialogDescription>
+                    <DialogContent className="sm:max-w-4xl">
+                        <DialogHeader className="bg-orange-600/30 dark:bg-orange-900/20 p-6 -mx-6 -mt-6 mb-6 border-b border-orange-100/50 dark:border-orange-900/30 rounded-t-lg">
+                            <DialogTitle className="flex items-center gap-2 text-orange-950 dark:text-orange-100">
+                                <Info className="h-5 w-5" />
+                                Product Details
+                            </DialogTitle>
+                            <DialogDescription className="text-orange-800/70 dark:text-orange-200/60">View comprehensive product information and specifications.</DialogDescription>
                         </DialogHeader>
 
                         {!detailsProduct ? (
                             <div className="text-sm text-muted-foreground">No product selected.</div>
                         ) : (
-                            <div className="grid gap-4 md:grid-cols-[180px_1fr]">
-                                <div className="rounded-lg bg-muted p-3">
-                                    <div className="aspect-square w-full overflow-hidden rounded-md bg-background relative">
+                            <div className="grid gap-6 md:grid-cols-[280px_1fr]">
+                                {/* Product Image Showcase */}
+                                <div className="space-y-4">
+                                    <div className="flex aspect-square items-center justify-center rounded-2xl bg-muted/50 p-6 border border-dashed border-muted-foreground/20">
                                         {productImageUrl(detailsProduct.image_path) ? (
                                             <img
                                                 src={productImageUrl(detailsProduct.image_path) ?? undefined}
                                                 alt={detailsProduct.name}
-                                                className="h-full w-full object-cover"
+                                                className="h-full w-full object-contain drop-shadow-2xl transition-transform hover:scale-105 duration-300"
                                                 loading="lazy"
                                             />
                                         ) : (
-                                            <div className="flex h-full w-full items-center justify-center">
-                                                <Package className="h-8 w-8 text-muted-foreground" />
+                                            <div className="flex flex-col items-center gap-3 text-muted-foreground">
+                                                <Package className="h-12 w-12 opacity-20" />
+                                                <span className="text-[10px] font-medium opacity-50 uppercase tracking-wider text-center">No image available</span>
                                             </div>
                                         )}
                                     </div>
+                                    
+                                    <div className="rounded-xl border bg-card/50 p-3 space-y-2">
+                                        <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Description</div>
+                                        <div className="text-xs leading-relaxed text-foreground/80 line-clamp-4 italic">
+                                            {String(detailsProduct.description ?? '').trim() ? String(detailsProduct.description) : 'No description provided.'}
+                                        </div>
+                                    </div>
                                 </div>
 
-                                <div className="min-w-0 space-y-3">
-                                    <div>
-                                        <div className="text-lg font-semibold truncate">{detailsProduct.name}</div>
-                                        <div className="mt-1 text-xs text-muted-foreground font-mono">SKU: {detailsProduct.sku}</div>
-                                    </div>
-
-                                    <div className="grid gap-3 sm:grid-cols-2">
-                                        <div className="rounded-md border p-3">
-                                            <div className="text-xs text-muted-foreground">Price</div>
-                                            <div className="mt-1 font-semibold text-primary">{peso(detailsProduct.price)}</div>
-                                        </div>
-                                        <div className="rounded-md border p-3">
-                                            <div className="text-xs text-muted-foreground">Category</div>
-                                            <div className="mt-1 font-medium">{detailsProduct.category || '—'}</div>
-                                        </div>
-                                        <div className="rounded-md border p-3">
-                                            <div className="text-xs text-muted-foreground">Stock ({stockContextLabel(effectiveBranch)})</div>
-                                            <div className="mt-1 font-medium tabular-nums">{Number(detailsProduct.stock ?? 0).toLocaleString()}</div>
-                                        </div>
-                                        <div className="rounded-md border p-3">
-                                            <div className="text-xs text-muted-foreground">Stock threshold</div>
-                                            <div className="mt-1 font-medium tabular-nums">{Number(detailsProduct.restocking_level ?? 0).toLocaleString()}</div>
+                                {/* Product Specifications */}
+                                <div className="space-y-4">
+                                    <div className="pb-1 border-b">
+                                        <div className="text-2xl font-black text-foreground tracking-tight truncate">{detailsProduct.name}</div>
+                                        <div className="mt-1 flex items-center gap-2">
+                                            <Badge variant="outline" className="font-mono text-[10px] px-2 py-0">SKU: {detailsProduct.sku}</Badge>
+                                            <Badge variant="secondary" className="text-[10px] px-2 py-0">{detailsProduct.category || 'Standard'}</Badge>
                                         </div>
                                     </div>
 
-                                    <div className="grid gap-3 sm:grid-cols-2">
-                                        <div className="rounded-md border p-3">
-                                            <div className="text-xs text-muted-foreground">Barcode</div>
-                                            <div className="mt-1 text-sm font-mono break-words">
-                                                {String(detailsProduct.barcode_value ?? '').trim() ? String(detailsProduct.barcode_value) : '—'}
-                                            </div>
+                                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                        {/* Core Stats */}
+                                        <div className="rounded-xl border bg-orange-50/50 dark:bg-orange-950/10 p-3 border-orange-100/50 dark:border-orange-900/20">
+                                            <div className="text-[10px] font-bold uppercase tracking-widest text-orange-600/70 dark:text-orange-400/70">Price</div>
+                                            <div className="mt-0.5 text-xl font-black text-orange-700 dark:text-orange-300 tabular-nums">{peso(detailsProduct.price)}</div>
                                         </div>
-                                        <div className="rounded-md border p-3">
-                                            <div className="text-xs text-muted-foreground">Unit of Measure</div>
-                                            <div className="mt-1 text-sm font-medium">
-                                                {String(detailsProduct.unit_of_measure ?? '').trim() ? String(detailsProduct.unit_of_measure) : '—'}
-                                            </div>
-                                        </div>
-                                        <div className="rounded-md border p-3">
-                                            <div className="text-xs text-muted-foreground">Brand</div>
-                                            <div className="mt-1 text-sm font-medium">
-                                                {String(detailsProduct.brand ?? '').trim() ? String(detailsProduct.brand) : '—'}
-                                            </div>
-                                        </div>
-                                        <div className="rounded-md border p-3">
-                                            <div className="text-xs text-muted-foreground">Color</div>
-                                            <div className="mt-1 text-sm font-medium">
-                                                {String(detailsProduct.color ?? '').trim() ? String(detailsProduct.color) : '—'}
-                                            </div>
-                                        </div>
-                                    </div>
 
-                                    <div className="rounded-md border p-3">
-                                        <div className="text-xs text-muted-foreground">Description</div>
-                                        <div className="mt-1 text-sm text-foreground whitespace-pre-wrap break-words">
-                                            {String(detailsProduct.description ?? '').trim() ? String(detailsProduct.description) : '—'}
+                                        <div className="rounded-xl border bg-card p-3">
+                                            <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Purchase Cost</div>
+                                            <div className="mt-0.5 text-xl font-black tabular-nums">{peso(detailsProduct.purchase_cost ?? 0)}</div>
+                                        </div>
+
+                                        <div className="rounded-xl border bg-card p-3">
+                                            <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Availability</div>
+                                            <div className="mt-0.5 text-xl font-black tabular-nums">
+                                                {Number(detailsProduct.stock ?? 0).toLocaleString()} <span className="text-xs font-normal">pcs</span>
+                                            </div>
+                                        </div>
+
+                                        {/* Compact Specs Grid */}
+                                        <div className="rounded-lg border bg-muted/20 p-2.5">
+                                            <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">UoM</div>
+                                            <div className="text-sm font-bold">{String(detailsProduct.unit_of_measure ?? 'pc')}</div>
+                                        </div>
+
+                                        <div className="rounded-lg border bg-muted/20 p-2.5">
+                                            <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Threshold</div>
+                                            <div className="text-sm font-bold tabular-nums">{Number(detailsProduct.restocking_level ?? 0)}</div>
+                                        </div>
+
+                                        <div className="rounded-lg border bg-muted/20 p-2.5">
+                                            <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Barcode</div>
+                                            <div className="text-sm font-bold font-mono truncate">{String(detailsProduct.barcode_value || detailsProduct.sku)}</div>
+                                        </div>
+
+                                        <div className="rounded-lg border bg-muted/20 p-2.5">
+                                            <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Brand</div>
+                                            <div className="text-sm font-bold truncate">{String(detailsProduct.brand || 'Generic')}</div>
+                                        </div>
+
+                                        <div className="rounded-lg border bg-muted/20 p-2.5">
+                                            <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Variant</div>
+                                            <div className="text-sm font-bold truncate">{String(detailsProduct.color || 'Default')}</div>
+                                        </div>
+
+                                        <div className="rounded-lg border bg-muted/20 p-2.5">
+                                            <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Branch</div>
+                                            <div className="text-sm font-bold truncate">{stockContextLabel(effectiveBranch)}</div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         )}
 
-                        <DialogFooter>
-                            <Button variant="outline" onClick={() => setDetailsProduct(null)}>
+                        <DialogFooter className="border-t pt-4">
+                            <Button variant="outline" onClick={() => setDetailsProduct(null)} className="font-bold">
                                 Close
                             </Button>
                         </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
+                    </DialogContent>
+                </Dialog>
 
                 {canManageProducts && (
                     <Dialog
@@ -1134,6 +1153,23 @@ export default function Products() {
                                                 }
                                             />
                                         </div>
+                                        <div className="space-y-1">
+                                            <label className="text-xs font-medium text-muted-foreground">
+                                                Purchase cost (₱) <span className="text-destructive">*</span>
+                                            </label>
+                                            <Input
+                                                type="number"
+                                                value={Number(editProduct.purchase_cost) || 0}
+                                                onChange={(e) =>
+                                                    setEditProduct((p) =>
+                                                        p ? { ...p, purchase_cost: Number(e.target.value) || 0 } : p
+                                                    )
+                                                }
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-3">
                                         <div className="space-y-1">
                                             <label className="text-xs font-medium text-muted-foreground">Stock Threshold</label>
                                             <Input
@@ -1591,6 +1627,21 @@ export default function Products() {
                                                         }
                                                     />
                                                 </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-medium text-muted-foreground">
+                                                        Purchase cost (₱) <span className="text-destructive">*</span>
+                                                    </label>
+                                                    <Input
+                                                        type="number"
+                                                        value={Number(newProduct.purchase_cost) || 0}
+                                                        onChange={(e) =>
+                                                            setNewProduct((p) => ({ ...p, purchase_cost: Number(e.target.value) || 0 }))
+                                                        }
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="grid grid-cols-2 gap-3">
                                                 <div className="space-y-1">
                                                     <label className="text-xs font-medium text-muted-foreground">Initial stock</label>
                                                     <Input
