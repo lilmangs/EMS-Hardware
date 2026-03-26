@@ -253,6 +253,10 @@ Route::post('/delivery/calendar/status', [DeliveryCalendarController::class, 'st
     ->middleware(['auth', 'verified', 'role:delivery'])
     ->name('delivery.calendar.status');
 
+Route::post('/delivery/calendar/bulk-status', [DeliveryCalendarController::class, 'bulkStatus'])
+    ->middleware(['auth', 'verified', 'role:delivery'])
+    ->name('delivery.calendar.bulk-status');
+
 Route::get('/dashboard/cashier', function () {
     return redirect()->route('Checkout');
 })

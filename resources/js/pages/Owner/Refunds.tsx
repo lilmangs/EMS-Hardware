@@ -120,7 +120,7 @@ export default function Refunds() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
 
-    const [dateRange, setDateRange] = useState<'all' | 'today' | 'yesterday' | 'week' | 'custom'>('week');
+    const [dateRange, setDateRange] = useState<'all' | 'today' | 'yesterday' | 'week' | 'custom'>('all');
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
     const [search, setSearch] = useState('');

@@ -1,5 +1,5 @@
 import { Head, usePage } from '@inertiajs/react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -23,12 +23,14 @@ type DeliveryRow = {
     ref: string;
     status: DeliveryStatus;
     scheduled_for: string | null;
+    delivered_at: string | null;
     queue_order: number | null;
     customer_name: string;
     address: string;
     delivery_fee: number | string;
     delivery_total: number | string;
     items: number;
+    proof_photo_path: string | null;
     sale: { ref: string; total: number | string; created_at: string } | null;
 };
 
@@ -127,12 +129,15 @@ export default function Calendar() {
     usePage();
 
     const [isMobile, setIsMobile] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [calendarHeight, setCalendarHeight] = useState(500);
 
     const [data, setData] = useState<CalendarData | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+    const [activeTab, setActiveTab] = useState<'queue' | 'pending'>('queue');
 
     const [selectedDay, setSelectedDay] = useState<string>(() => new Date().toISOString().slice(0, 10));
 
@@ -142,7 +147,9 @@ export default function Calendar() {
     const [proofPhoto, setProofPhoto] = useState<File | null>(null);
     const [proofPhotoPreview, setProofPhotoPreview] = useState<string>('');
 
-    const proofInputRef = useRef<HTMLInputElement | null>(null);
+    const [proofInputRef] = [useRef<HTMLInputElement | null>(null)];
+
+    const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
     const abortRef = useRef<AbortController | null>(null);
     const seqRef = useRef(0);
@@ -221,6 +228,34 @@ export default function Calendar() {
         return () => mql.removeEventListener('change', update);
     }, []);
 
+    // Robust measurement of available height for no-scroll display
+    useLayoutEffect(() => {
+        const compute = () => {
+            if (containerRef.current) {
+                // We want the calendar to fill the card height.
+                // The card itself is inside a flex-1 min-h-0 container.
+                // Let's measure the CardContent's available space more directly.
+                const rect = containerRef.current.getBoundingClientRect();
+                // Subscriptions often need a bit of buffer
+                setCalendarHeight(Math.max(300, Math.floor(rect.height) - 4));
+            }
+        };
+        const timer = setTimeout(compute, 100); // Wait for layout
+        window.addEventListener('resize', compute);
+        return () => {
+            clearTimeout(timer);
+            window.removeEventListener('resize', compute);
+        };
+    }, []);
+
+    // Auto-dismiss success messages after 4 seconds
+    useEffect(() => {
+        if (success) {
+            const timer = setTimeout(() => setSuccess(''), 4000);
+            return () => clearTimeout(timer);
+        }
+    }, [success]);
+
     const onDatesSet = useCallback(
         (arg: DatesSetArg) => {
             rangeRef.current = { start: arg.startStr, end: arg.endStr };
@@ -262,6 +297,7 @@ export default function Calendar() {
     useEffect(() => {
         setError('');
         setSuccess('');
+        setSelectedIds([]);
     }, [selectedDay]);
 
     useEffect(() => {
@@ -298,6 +334,7 @@ export default function Calendar() {
                     allDay: false,
                     backgroundColor: color,
                     borderColor: color,
+                    editable: d.status !== 'delivered',
                     extendedProps: { delivery: d },
                 };
             });
@@ -315,6 +352,38 @@ export default function Calendar() {
     const onDateClick = useCallback((arg: DateClickArg) => {
         setSelectedDay(arg.dateStr.slice(0, 10));
     }, []);
+
+    const bulkSetOutForDelivery = useCallback(async () => {
+        if (selectedIds.length === 0) return;
+        setError('');
+        setSuccess('');
+        setIsLoading(true);
+        try {
+            const res = await fetch('/delivery/calendar/bulk-status', {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken(),
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                    delivery_ids: selectedIds,
+                    status: 'out_for_delivery',
+                }),
+            });
+            const json = await res.json().catch(() => null);
+            if (!res.ok) throw new Error(json?.message || 'Failed to update status');
+            setSuccess(`${selectedIds.length} order${selectedIds.length > 1 ? 's' : ''} set as Out for Delivery.`);
+            setSelectedIds([]);
+            await fetchData(rangeRef.current ?? undefined);
+        } catch (e: any) {
+            setError(e?.message ? String(e.message) : 'Failed to update status');
+        } finally {
+            setIsLoading(false);
+        }
+    }, [selectedIds, fetchData]);
 
     const onEventClick = useCallback((arg: EventClickArg) => {
         const delivery = (arg.event.extendedProps as any)?.delivery as DeliveryRow | undefined;
@@ -423,158 +492,227 @@ export default function Calendar() {
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Delivery Calendar" />
-            <div className="space-y-6 p-6">
-                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div className="space-y-1">
-                        <h1 className="text-3xl font-bold">Delivery Calendar</h1>
-                        <p className="text-muted-foreground">View your scheduled deliveries and manage your daily queue.</p>
-                        <p className="text-xs text-muted-foreground">
-                            {lastUpdatedAt ? `Last updated: ${lastUpdatedAt.toLocaleString()}` : (isLoading ? 'Loading…' : 'Not loaded yet')}
-                        </p>
+            <div className="flex h-[calc(100vh-4rem)] flex-col gap-1 overflow-y-auto p-1.5 bg-muted/5 border-t">
+
+                {/* ── Compact Header Bar ── */}
+                <div className="flex shrink-0 items-center justify-between px-1">
+                    <div className="flex items-center gap-3">
+                        <h1 className="text-lg font-bold tracking-tight">Delivery Calendar</h1>
+                        {lastUpdatedAt && (
+                            <span className="text-[10px] text-muted-foreground hidden sm:inline-block bg-muted px-2 py-0.5 rounded-full uppercase tracking-wider">
+                                Live • Updated {lastUpdatedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                        )}
                     </div>
-                    <Button
-                        variant="outline"
-                        onClick={() => fetchData(rangeRef.current ?? undefined)}
-                        disabled={isLoading}
-                    >
-                        {isLoading ? 'Loading…' : 'Refresh'}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            className="h-8 text-xs font-semibold"
+                            onClick={() => fetchData(rangeRef.current ?? undefined)}
+                            disabled={isLoading}
+                        >
+                            {isLoading ? 'Loading…' : 'Refresh'}
+                        </Button>
+                    </div>
                 </div>
 
-                {(error || success) && (
-                    <div className="space-y-2">
-                        {error && (
-                            <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
-                                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                    <div>{error}</div>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => fetchData(rangeRef.current ?? undefined).catch(() => null)}
-                                        disabled={isLoading}
-                                    >
-                                        Retry
-                                    </Button>
+                {/* ── Alerts ── */}
+                {error && (
+                    <div className="shrink-0 animate-in slide-in-from-top-1 px-1">
+                        <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs text-red-700 shadow-sm dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <span className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />
+                                    <span className="font-semibold">{error}</span>
                                 </div>
+                                <button onClick={() => setError('')} className="ml-2 opacity-50 hover:opacity-100 font-bold">×</button>
                             </div>
-                        )}
-                        {success && (
-                            <div className="rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 dark:border-green-900 dark:bg-green-950/30 dark:text-green-300">
-                                {success}
-                            </div>
-                        )}
+                        </div>
                     </div>
                 )}
 
-                <div className={isMobile ? 'space-y-6' : 'grid gap-6 lg:grid-cols-12'}>
-                    <div className={isMobile ? '' : 'space-y-6 lg:col-span-8'}>
-                        <Card>
-                            <CardHeader className="space-y-1">
-                                <CardTitle>Calendar</CardTitle>
-                                <CardDescription>Drag and drop to reschedule.</CardDescription>
-                            </CardHeader>
-                            <CardContent>
-                                <div className="overflow-hidden rounded-lg border">
-                                    <div className={isMobile ? 'p-0' : 'p-2'}>
-                                        <FullCalendar
-                                            plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-                                            initialView="dayGridMonth"
-                                            headerToolbar={
-                                                isMobile
-                                                    ? { left: 'prev', center: 'title', right: 'next' }
-                                                    : { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay' }
-                                            }
-                                            height="auto"
-                                            events={events as any}
-                                            datesSet={onDatesSet}
-                                            displayEventTime={false}
-                                            dateClick={onDateClick}
-                                            eventClick={onEventClick}
-                                            editable={!isLoading && !isMobile}
-                                            eventDrop={onEventDrop}
-                                            eventResizableFromStart={false}
-                                            nowIndicator
-                                            dayMaxEvents={isMobile ? 1 : true}
-                                            fixedWeekCount={!isMobile}
-                                            dayHeaderFormat={isMobile ? { weekday: 'narrow' } : undefined}
-                                            titleFormat={isMobile ? { month: 'short', year: 'numeric' } : undefined}
-                                            eventContent={eventContent}
-                                        />
-                                    </div>
+                {/* ── Main Layout ── */}
+                <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-12">
+
+                    {/* Calendar (fills 8/12 on LG) */}
+                    <div className="order-2 flex min-h-0 flex-col lg:order-1 lg:col-span-8">
+                        <Card className="flex min-h-0 flex-1 flex-col shadow-sm border-none bg-background">
+
+                            <CardContent ref={containerRef} className="min-h-0 flex-1 overflow-visible p-0">
+                                <div className="h-full">
+                                    <FullCalendar
+                                        plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+                                        initialView="dayGridMonth"
+                                        headerToolbar={
+                                            isMobile
+                                                ? { left: 'prev', center: 'title', right: 'next' }
+                                                : { left: 'prev,next today', center: 'title', right: 'dayGridMonth,timeGridWeek,timeGridDay' }
+                                        }
+                                        height={calendarHeight}
+                                        events={events as any}
+                                        datesSet={onDatesSet}
+                                        displayEventTime={false}
+                                        dateClick={onDateClick}
+                                        eventClick={onEventClick}
+                                        editable={!isLoading && !isMobile}
+                                        eventDrop={onEventDrop}
+                                        eventResizableFromStart={false}
+                                        nowIndicator
+                                        dayMaxEvents={isMobile ? 1 : true}
+                                        moreLinkClick="popover"
+                                        fixedWeekCount={false}
+                                        dayHeaderFormat={isMobile ? { weekday: 'narrow' } : { weekday: 'short' }}
+                                        titleFormat={isMobile ? { month: 'short', year: 'numeric' } : { month: 'long', year: 'numeric' }}
+                                        eventContent={eventContent}
+                                    />
                                 </div>
                             </CardContent>
                         </Card>
                     </div>
 
-                    <div className={isMobile ? '' : 'space-y-6 lg:col-span-4'}>
-                        <Card>
-                            <CardHeader className="space-y-2">
-                                <div>
-                                    <CardTitle>Selected Day</CardTitle>
-                                    <CardDescription>Pick a date on the calendar to view the queue.</CardDescription>
-                                </div>
-                            </CardHeader>
-                            <CardContent className="space-y-4">
-                                <div className="text-sm text-muted-foreground">{selectedDay}</div>
-
-                                <div className="space-y-2">
-                                    <div className="text-sm font-medium">Queue</div>
-                                    <div className="text-xs text-muted-foreground">
-                                        What to deliver first.
+                    {/* Queue / Pending Panel */}
+                    <div className="order-1 flex min-h-0 flex-col lg:order-2 lg:col-span-4">
+                        <Card className="flex min-h-0 flex-1 flex-col shadow-sm border-none bg-background">
+                            {/* Panel Tab Header */}
+                            <CardHeader className="shrink-0 space-y-2 bg-muted/20 pb-2 p-3 border-b">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex bg-muted p-1 rounded-lg">
+                                        <button
+                                            onClick={() => setActiveTab('queue')}
+                                            className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${activeTab === 'queue' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                                        >
+                                            Day Queue
+                                        </button>
+                                        <button
+                                            onClick={() => setActiveTab('pending')}
+                                            className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${activeTab === 'pending' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                                        >
+                                            New Deliveries ({data?.unscheduled?.length ?? 0})
+                                        </button>
                                     </div>
+                                    <label className="flex cursor-pointer select-none items-center gap-1.5 text-xs font-bold text-muted-foreground">
+                                        <input
+                                            type="checkbox"
+                                            className="h-4 w-4 rounded accent-orange-600"
+                                            checked={
+                                                activeTab === 'queue'
+                                                    ? (selectedIds.length === queueForSelectedDay.length && queueForSelectedDay.length > 0)
+                                                    : (selectedIds.length === (data?.unscheduled?.length ?? 0) && (data?.unscheduled?.length ?? 0) > 0)
+                                            }
+                                            onChange={(e) => {
+                                                if (e.target.checked) {
+                                                    const list = activeTab === 'queue' ? queueForSelectedDay : (data?.unscheduled ?? []);
+                                                    setSelectedIds(list.map((d) => d.id));
+                                                } else {
+                                                    setSelectedIds([]);
+                                                }
+                                            }}
+                                        />
+                                        All
+                                    </label>
+                                </div>
 
-                                    {queueForSelectedDay.length === 0 ? (
-                                        <div className="rounded-md border bg-muted/20 p-4 text-sm text-muted-foreground">
-                                            No scheduled deliveries for this day.
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-2">
-                                            {queueForSelectedDay.map((d, idx) => (
-                                                <div
-                                                    key={d.id}
-                                                    role="button"
-                                                    tabIndex={0}
-                                                    className="rounded-lg border bg-background p-3 cursor-pointer transition-colors hover:bg-muted/30 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                                    onClick={() => {
-                                                        setDetailsDelivery(d);
-                                                        setIsDetailsOpen(true);
-                                                    }}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter' || e.key === ' ') {
-                                                            e.preventDefault();
-                                                            setDetailsDelivery(d);
-                                                            setIsDetailsOpen(true);
-                                                        }
-                                                    }}
-                                                >
-                                                    <div className="flex items-start gap-3">
-                                                        <div className="mt-0.5 flex h-7 w-7 items-center justify-center rounded-md bg-muted text-xs font-semibold">
-                                                            {idx + 1}
-                                                        </div>
+                                <div className="space-y-1">
+                                    <CardTitle className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                                        {activeTab === 'queue' ? `Deliveries for ${selectedDay || 'Today'}` : 'Unscheduled Deliveries'}
+                                    </CardTitle>
+                                    <CardDescription className="text-[10px] italic">
+                                        {activeTab === 'queue' ? 'Items scheduled for this date.' : 'Drag to calendar or assign a date.'}
+                                    </CardDescription>
+                                </div>
 
-                                                        <div className="min-w-0 flex-1">
-                                                            <div className="flex flex-wrap items-center gap-2">
-                                                                <div className="font-medium">{d.ref}</div>
-                                                                {statusBadge(d)}
+                                {selectedIds.length > 0 && activeTab === 'queue' && (
+                                    <button
+                                        type="button"
+                                        disabled={isLoading}
+                                        onClick={bulkSetOutForDelivery}
+                                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-orange-600 py-2.5 text-xs font-bold text-white shadow-lg active:scale-95 transition-all disabled:opacity-50"
+                                    >
+                                        <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-white/20 text-[10px]">
+                                            {selectedIds.length}
+                                        </span>
+                                        {isLoading ? 'Updating…' : 'Set as Out for Delivery'}
+                                    </button>
+                                )}
+                            </CardHeader>
+
+                            {/* Scrollable list content */}
+                            <CardContent className="min-h-0 flex-1 overflow-y-auto bg-muted/5 p-4 pt-2">
+                                {(() => {
+                                    const list = activeTab === 'queue' ? queueForSelectedDay : (data?.unscheduled ?? []);
+                                    if (list.length === 0) {
+                                        return (
+                                            <div className="flex flex-col items-center justify-center py-10 text-center opacity-50">
+                                                <div className="mb-2 text-2xl">📦</div>
+                                                <div className="text-xs font-bold uppercase tracking-wide">No {activeTab} items</div>
+                                                <div className="text-[10px]">Everything looks clear!</div>
+                                            </div>
+                                        );
+                                    }
+                                    return (
+                                        <div className="space-y-3 pt-2">
+                                            {list.map((d, idx) => {
+                                                const isChecked = selectedIds.includes(d.id);
+                                                return (
+                                                    <div
+                                                        key={d.id}
+                                                        className={`group relative overflow-hidden rounded-xl border bg-background p-4 shadow-sm transition-all hover:shadow-md ${
+                                                            isChecked ? 'border-orange-500 ring-1 ring-orange-500/20' : ''
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-start gap-4">
+                                                            <div className="flex flex-col items-center gap-2">
+                                                                <input
+                                                                    type="checkbox"
+                                                                    className="h-5 w-5 cursor-pointer disabled:cursor-not-allowed rounded-full accent-orange-600"
+                                                                    disabled={d.status === 'delivered'}
+                                                                    checked={isChecked}
+                                                                    onChange={(e) => {
+                                                                        if (e.target.checked) {
+                                                                            setSelectedIds((prev) => [...prev, d.id]);
+                                                                        } else {
+                                                                            setSelectedIds((prev) => prev.filter((id) => id !== d.id));
+                                                                        }
+                                                                    }}
+                                                                />
+                                                                <span className="text-[10px] font-bold text-muted-foreground/50">#{idx + 1}</span>
                                                             </div>
-                                                            <div className="mt-1 text-xs text-muted-foreground line-clamp-2">
-                                                                {d.customer_name} • {d.address}
-                                                            </div>
-                                                            <div className="mt-1 text-xs text-muted-foreground">
-                                                                {d.scheduled_for ? formatDateTime(d.scheduled_for) : ''}
+                                                            <div
+                                                                className="min-w-0 flex-1 cursor-pointer"
+                                                                onClick={() => {
+                                                                    setDetailsDelivery(d);
+                                                                    setIsDetailsOpen(true);
+                                                                }}
+                                                            >
+                                                                <div className="flex flex-wrap items-center gap-2 mb-1">
+                                                                    <div className="text-sm font-bold tracking-tight text-foreground">{d.ref}</div>
+                                                                    {statusBadge(d)}
+                                                                </div>
+                                                                <div className="line-clamp-1 text-xs font-medium text-foreground/80">{d.customer_name}</div>
+                                                                <div className="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground">{d.address}</div>
+
+                                                                <div className="mt-2 flex items-center justify-between border-t border-muted pt-2 text-[10px]">
+                                                                    <div className="font-bold text-orange-600">{peso(d.delivery_total)}</div>
+                                                                    <div className="font-medium text-muted-foreground italic">
+                                                                        {d.scheduled_for ? formatDateTime(d.scheduled_for) : 'Waiting for schedule…'}
+                                                                    </div>
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     </div>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
-                                    )}
-                                </div>
+                                    );
+                                })()}
                             </CardContent>
                         </Card>
                     </div>
+
                 </div>
             </div>
+
 
             <Dialog
                 open={isDetailsOpen}
@@ -586,172 +724,231 @@ export default function Calendar() {
                     }
                 }}
             >
-                <DialogContent className="sm:max-w-3xl">
-                    <DialogHeader>
-                        <DialogTitle>Delivery Details</DialogTitle>
-                        <DialogDescription>{detailsDelivery ? detailsDelivery.ref : ''}</DialogDescription>
+                <DialogContent className="max-h-[95vh] overflow-hidden p-0 sm:max-w-3xl">
+                    <DialogHeader className="border-b bg-orange-600/10 p-6 text-left">
+                        <div className="flex items-start justify-between">
+                            <div className="space-y-1">
+                                <DialogTitle className="text-xl font-bold">Delivery Details</DialogTitle>
+                                <DialogDescription className="text-sm font-medium text-orange-600">
+                                    Ref: {detailsDelivery?.ref}
+                                </DialogDescription>
+                            </div>
+                            {detailsDelivery && (
+                                <div className="hidden sm:block">
+                                    {statusBadge(detailsDelivery)}
+                                </div>
+                            )}
+                        </div>
                     </DialogHeader>
 
                     {detailsDelivery && (
-                        <div className="grid gap-6 md:grid-cols-2 text-sm mt-2">
-                            <div className="space-y-5 rounded-md border p-5 bg-card shadow-sm h-full relative">
-                                <div>
-                                    <div className="font-semibold text-muted-foreground text-xs uppercase mb-1">Customer Name</div> 
-                                    <div className="text-base">{detailsDelivery.customer_name}</div>
-                                </div>
-                                <div className="absolute top-5 right-5">{statusBadge(detailsDelivery)}</div>
-                                <div>
-                                    <div className="font-semibold text-muted-foreground text-xs uppercase mb-1">Address</div> 
-                                    <div>{detailsDelivery.address}</div>
-                                </div>
-                                <div>
-                                    <div className="font-semibold text-muted-foreground text-xs uppercase mb-1">Scheduled For</div> 
-                                    <div className="text-sm font-medium">{detailsDelivery.scheduled_for ? formatDateTime(detailsDelivery.scheduled_for) : '—'}</div>
-                                </div>
-                                <div className="grid grid-cols-2 gap-4 pt-1 border-t">
-                                    <div>
-                                        <div className="font-semibold text-muted-foreground text-xs uppercase mb-1">Items Count</div> 
-                                        <div className="text-base">{detailsDelivery.items}</div>
-                                    </div>
-                                    <div>
-                                        <div className="font-semibold text-muted-foreground text-xs uppercase mb-1">Total Amount</div> 
-                                        <div className="text-base font-semibold">{peso(detailsDelivery.delivery_total)}</div>
-                                    </div>
-                                </div>
-                            </div>
+                        <div className="overflow-y-auto p-6">
+                            <div className="grid gap-6 md:grid-cols-2">
+                                <div className="space-y-6">
+                                    {/* Customer Info Card */}
+                                    <div className="space-y-4 rounded-xl border bg-card p-5 shadow-sm">
+                                        <div className="flex items-center justify-between sm:hidden">
+                                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Status</span>
+                                            {statusBadge(detailsDelivery)}
+                                        </div>
+                                        
+                                        <div>
+                                            <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Customer Name</div>
+                                            <div className="text-base font-semibold">{detailsDelivery.customer_name}</div>
+                                        </div>
+                                        
+                                        <div>
+                                            <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Shipping Address</div>
+                                            <div className="text-sm leading-relaxed text-muted-foreground">{detailsDelivery.address}</div>
+                                        </div>
+                                        
+                                        <div>
+                                            <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Scheduled For</div>
+                                            <div className="text-sm font-medium">
+                                                {detailsDelivery.scheduled_for ? formatDateTime(detailsDelivery.scheduled_for) : 'No date set'}
+                                            </div>
+                                        </div>
 
-                            <div className="rounded-md border p-5 bg-muted/10 h-full flex flex-col justify-between">
-                                <div>
-                                    <div className="text-sm font-semibold mb-1">Proof of Delivery Photo</div>
-                                    <div className="text-xs text-muted-foreground mb-4">A photo is required before marking this delivery as completed.</div>
+                                        <div className="grid grid-cols-2 gap-4 border-t pt-4">
+                                            <div>
+                                                <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Items</div>
+                                                <div className="text-lg font-bold">{detailsDelivery.items} units</div>
+                                            </div>
+                                            <div>
+                                                <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Total Value</div>
+                                                <div className="text-lg font-bold text-orange-600">{peso(detailsDelivery.delivery_total)}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
 
-                                    <div className="rounded-md border bg-muted/40 p-1 relative h-44 mb-4">
-                                        {proofPhotoPreview ? (
+                                {/* Proof Card */}
+                                <div className="flex flex-col space-y-4 rounded-xl border bg-muted/30 p-5 shadow-inner">
+                                    <div>
+                                        <div className="text-sm font-bold">Proof of Delivery</div>
+                                        {detailsDelivery.status === 'delivered' ? (
+                                            <div className="mt-1 text-xs text-green-600 font-medium">
+                                                Captured on {detailsDelivery.delivered_at ? formatDateTime(detailsDelivery.delivered_at) : 'Completion'}
+                                            </div>
+                                        ) : (
+                                            <div className="mt-1 text-xs text-muted-foreground">Marking as "Delivered" requires a photo.</div>
+                                        )}
+                                    </div>
+
+                                    <div className="relative flex aspect-video w-full items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-muted-foreground/30 bg-background/50 transition-colors hover:border-muted-foreground/50">
+                                        {proofPhotoPreview || detailsDelivery.proof_photo_path ? (
                                             <img
-                                                src={proofPhotoPreview}
-                                                alt="Proof of delivery preview"
-                                                className="h-full w-full rounded object-cover"
+                                                src={proofPhotoPreview || `/storage/${detailsDelivery.proof_photo_path}`}
+                                                alt="Proof of delivery"
+                                                className="h-full w-full object-cover"
                                             />
                                         ) : (
-                                            <div className="flex flex-col gap-2 h-full items-center justify-center text-xs text-muted-foreground">
-                                                <span>Image Preview</span>
-                                                <span className="text-[10px] opacity-70">Capture or select an image</span>
+                                            <div className="flex flex-col items-center gap-2 text-muted-foreground">
+                                                <div className="rounded-full bg-muted p-3">
+                                                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                    </svg>
+                                                </div>
+                                                <span className="text-xs">No image captured</span>
                                             </div>
                                         )}
                                     </div>
 
-                                    <div className="space-y-2">
-                                        <input
-                                            ref={proofInputRef}
-                                            type="file"
-                                            accept="image/*"
-                                            capture="environment"
-                                            className="hidden"
-                                            onChange={(e) => {
-                                                const file = e.target.files?.[0] ?? null;
-                                                setProofPhoto(file);
-                                            }}
-                                        />
-                                        <div className="flex flex-wrap items-center gap-2">
+                                    {detailsDelivery.status !== 'delivered' && (
+                                        <div className="space-y-2">
+                                            <input
+                                                ref={proofInputRef}
+                                                type="file"
+                                                accept="image/*"
+                                                capture="environment"
+                                                className="hidden"
+                                                onChange={(e) => {
+                                                    const file = e.target.files?.[0] ?? null;
+                                                    setProofPhoto(file);
+                                                }}
+                                            />
                                             <Button
                                                 type="button"
-                                                variant="outline"
-                                                className="flex-1"
+                                                variant="secondary"
+                                                className="w-full text-xs font-bold"
                                                 onClick={() => proofInputRef.current?.click()}
                                             >
-                                                Take / Upload Photo
+                                                {proofPhoto ? 'Change Photo' : 'Capture Proof Photo'}
                                             </Button>
                                             {proofPhoto && (
-                                                <Button
+                                                <button
                                                     type="button"
-                                                    variant="destructive"
                                                     onClick={() => setProofPhoto(null)}
+                                                    className="w-full text-[10px] font-bold uppercase tracking-wider text-red-500 hover:underline"
                                                 >
-                                                    Remove
-                                                </Button>
+                                                    Discard Photo
+                                                </button>
                                             )}
                                         </div>
-                                        {proofPhoto && (
-                                            <div className="text-xs text-center mt-1 text-muted-foreground truncate px-2">Selected: {proofPhoto.name}</div>
-                                        )}
-                                    </div>
+                                    )}
                                 </div>
                             </div>
                         </div>
                     )}
 
-                    <DialogFooter className="justify-between sm:justify-between">
-                        <div className="flex gap-2">
-                            {detailsDelivery ? (() => {
+                    <DialogFooter className="sticky bottom-0 flex flex-col-reverse justify-between gap-3 border-t bg-gray-50/90 p-6 backdrop-blur-sm sm:flex-row dark:bg-gray-900/50">
+                        <Button variant="ghost" onClick={() => setIsDetailsOpen(false)} className="sm:flex-none">
+                            Close
+                        </Button>
+                        <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:justify-end">
+                            {detailsDelivery && (() => {
                                 const now = new Date();
                                 const isDelayed = detailsDelivery.scheduled_for && new Date(detailsDelivery.scheduled_for) < now && detailsDelivery.status !== 'delivered';
                                 
                                 return (
-                                <>
-                                    {isDelayed && (
-                                        <Button
-                                            variant="outline"
-                                            className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
-                                            onClick={async () => {
-                                                const tmr = new Date();
-                                                tmr.setDate(tmr.getDate() + 1);
-                                                tmr.setHours(9, 0, 0, 0);
-                                                try {
-                                                    const csrf = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-                                                    const res = await fetch('/delivery/calendar/schedule', {
-                                                        method: 'POST',
-                                                        headers: {
-                                                            'Accept': 'application/json',
-                                                            'Content-Type': 'application/json',
-                                                            'X-CSRF-TOKEN': csrf,
-                                                            'X-Requested-With': 'XMLHttpRequest',
-                                                        },
-                                                        body: JSON.stringify({
-                                                            delivery_id: detailsDelivery.id,
-                                                            scheduled_for: tmr.toISOString(),
-                                                        }),
-                                                    });
-                                                    if (!res.ok) throw new Error();
-                                                    setIsDetailsOpen(false);
-                                                    fetchData();
-                                                } catch {
-                                                    setError('Failed to reschedule');
-                                                }
-                                            }}
-                                        >
-                                            Reschedule (Tmrw)
-                                        </Button>
-                                    )}
-                                    <Button variant="outline" onClick={() => setDeliveryStatus(detailsDelivery.id, 'preparing').catch(() => null)}>
-                                        Preparing
-                                    </Button>
-                                    <Button variant="outline" onClick={() => setDeliveryStatus(detailsDelivery.id, 'out_for_delivery').catch(() => null)}>
-                                        Out
-                                    </Button>
-                                    <Button
-                                        onClick={() => {
-                                            setError('');
-                                            setSuccess('');
-                                            setDeliveryStatus(detailsDelivery.id, 'delivered')
-                                                .then(() => setSuccess('Delivered.'))
-                                                .catch((e: any) => {
-                                                    setError(e?.message ? String(e.message) : 'Failed to mark delivered');
-                                                });
-                                        }}
-                                        disabled={!proofPhoto}
-                                    >
-                                        Delivered
-                                    </Button>
-                                </>
+                                    <>
+                                        {detailsDelivery.status !== 'delivered' && (
+                                            <>
+                                                {isDelayed && (
+                                                    <Button
+                                                        variant="outline"
+                                                        className="border-red-200 text-red-600 hover:bg-red-50"
+                                                        onClick={async () => {
+                                                            const tmr = new Date();
+                                                            tmr.setDate(tmr.getDate() + 1);
+                                                            tmr.setHours(9, 0, 0, 0);
+                                                            try {
+                                                                const res = await fetch('/delivery/calendar/schedule', {
+                                                                    method: 'POST',
+                                                                    headers: {
+                                                                        'Accept': 'application/json',
+                                                                        'Content-Type': 'application/json',
+                                                                        'X-CSRF-TOKEN': csrfToken(),
+                                                                        'X-Requested-With': 'XMLHttpRequest',
+                                                                    },
+                                                                    body: JSON.stringify({
+                                                                        delivery_id: detailsDelivery.id,
+                                                                        scheduled_for: tmr.toISOString(),
+                                                                    }),
+                                                                });
+                                                                if (!res.ok) throw new Error();
+                                                                setIsDetailsOpen(false);
+                                                                fetchData();
+                                                            } catch {
+                                                                setError('Failed to reschedule');
+                                                            }
+                                                        }}
+                                                    >
+                                                        Reschedule (Tmrw)
+                                                    </Button>
+                                                )}
+                                                <Button variant="outline" onClick={() => setDeliveryStatus(detailsDelivery.id, 'preparing')}>
+                                                    Preparing
+                                                </Button>
+                                                <Button variant="outline" onClick={() => setDeliveryStatus(detailsDelivery.id, 'out_for_delivery')}>
+                                                    Out for Delivery
+                                                </Button>
+                                                <Button
+                                                    className="bg-orange-600 hover:bg-orange-700 active:scale-95 transition-transform"
+                                                    disabled={!proofPhoto}
+                                                    onClick={() => {
+                                                        setError('');
+                                                        setSuccess('');
+                                                        setDeliveryStatus(detailsDelivery.id, 'delivered')
+                                                            .then(() => setSuccess('Delivered.'))
+                                                            .catch((e: any) => {
+                                                                setError(e?.message ? String(e.message) : 'Failed to mark delivered');
+                                                            });
+                                                    }}
+                                                >
+                                                    Complete Delivery
+                                                </Button>
+                                            </>
+                                        )}
+                                    </>
                                 );
-                            })() : null}
+                            })()}
                         </div>
-                        <Button variant="outline" onClick={() => setIsDetailsOpen(false)}>
-                            Close
-                        </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+            {/* ── Success Popup Notification ── */}
+            {success && (
+                <div className="fixed bottom-6 left-1/2 z-[9999] -translate-x-1/2 transform animate-in fade-in slide-in-from-bottom-5 duration-300">
+                    <div className="flex items-center gap-3 rounded-2xl bg-orange-600 px-6 py-3.5 text-sm font-bold text-white shadow-2xl ring-4 ring-orange-600/20">
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-white/20">
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                            </svg>
+                        </div>
+                        <span>{success}</span>
+                        <button 
+                            onClick={() => setSuccess('')} 
+                            className="ml-4 rounded-full bg-white/10 p-1 hover:bg-white/20 transition-colors"
+                        >
+                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            )}
         </AppLayout>
     );
 }

@@ -41,8 +41,8 @@ export const sidebarMenus: Record<string, MenuItem[]> = {
 
     cashier: [
         { label: 'Checkout', href: '/Checkout', icon: ArrowRightLeft },
-        { label: 'Transaction', href: '/Transaction', icon: FileText },
         { label: 'Refund', href: '/Refund', icon: TicketX },
+        { label: 'Transaction', href: '/Transaction', icon: FileText },
         { label: 'Products', href: '/Products', icon: PackageSearch },
         { label: 'Activity Log', href: '/cashier/activity-log', icon: FileText },
 

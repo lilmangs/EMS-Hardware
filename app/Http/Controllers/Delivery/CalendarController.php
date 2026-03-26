@@ -69,12 +69,14 @@ class CalendarController extends Controller
                 'ref' => $d->ref,
                 'status' => $d->status,
                 'scheduled_for' => optional($d->scheduled_for)->toDateTimeString(),
+                'delivered_at' => optional($d->delivered_at)->toDateTimeString(),
                 'queue_order' => $d->queue_order,
                 'customer_name' => $d->customer_name,
                 'address' => $d->address,
                 'delivery_fee' => $d->delivery_fee,
                 'delivery_total' => $d->orderGrandTotal(),
                 'items' => (int) ($itemsCount ?? 0),
+                'proof_photo_path' => $d->proof_photo_path,
                 'sale' => $d->sale ? [
                     'ref' => $d->sale->ref,
                     'total' => $d->sale->total,
@@ -244,5 +246,39 @@ class CalendarController extends Controller
         $delivery->save();
 
         return response()->json(['ok' => true]);
+    }
+
+    public function bulkStatus(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $userId = $user?->id;
+        $branchKey = $user?->branch_key;
+
+        if (!is_string($branchKey) || trim($branchKey) === '') {
+            return response()->json(['message' => 'No assigned branch.'], 422);
+        }
+
+        $validated = $request->validate([
+            'delivery_ids'   => ['required', 'array', 'min:1'],
+            'delivery_ids.*' => ['required', 'integer'],
+            'status'         => ['required', Rule::in(['preparing', 'out_for_delivery', 'delivered'])],
+        ]);
+
+        $ids = collect($validated['delivery_ids'])->unique()->values()->all();
+
+        $updated = PosDelivery::query()
+            ->whereIn('id', $ids)
+            ->where('branch_key', $branchKey)
+            ->where(function ($q) use ($userId) {
+                $q->where('assigned_to_user_id', $userId)
+                    ->orWhereNull('assigned_to_user_id');
+            })
+            ->update([
+                'status'               => $validated['status'],
+                'assigned_to_user_id'  => $userId,
+                'assigned_at'          => now(),
+            ]);
+
+        return response()->json(['ok' => true, 'updated' => $updated]);
     }
 }

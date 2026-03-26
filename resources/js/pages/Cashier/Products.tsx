@@ -849,7 +849,7 @@ export default function Products() {
                         </div>
                     ) : viewMode === 'grid' ? (
                         <div className="max-h-[calc(100svh-22rem)] overflow-auto pr-1">
-                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
                                 {filteredProducts.map((p) => (
                                     <ProductCardGrid
                                         key={p.id}
@@ -923,19 +923,21 @@ export default function Products() {
                         if (!open) setDetailsProduct(null);
                     }}
                 >
-                    <DialogContent className="sm:max-w-4xl">
-                        <DialogHeader className="bg-orange-600/30 dark:bg-orange-900/20 p-6 -mx-6 -mt-6 mb-6 border-b border-orange-100/50 dark:border-orange-900/30 rounded-t-lg">
-                            <DialogTitle className="flex items-center gap-2 text-orange-950 dark:text-orange-100">
-                                <Info className="h-5 w-5" />
+                    <DialogContent className="!w-[86vw] sm:!max-w-4xl max-h-[90svh] overflow-hidden flex flex-col p-0 border-none shadow-2xl">
+                        <DialogHeader className="bg-orange-600/10 p-6 pb-5 border-b border-orange-100 dark:border-orange-900/30">
+                            <DialogTitle className="text-xl font-bold flex items-center gap-2 text-orange-900 dark:text-orange-100">
+                                <Info className="h-5 w-5 text-orange-600" />
                                 Product Details
                             </DialogTitle>
-                            <DialogDescription className="text-orange-800/70 dark:text-orange-200/60">View comprehensive product information and specifications.</DialogDescription>
+                            <DialogDescription className="text-orange-800/70 dark:text-orange-200/60 font-medium">
+                                View comprehensive product information and specifications.
+                            </DialogDescription>
                         </DialogHeader>
 
                         {!detailsProduct ? (
-                            <div className="text-sm text-muted-foreground">No product selected.</div>
+                            <div className="p-6 text-sm text-muted-foreground">No product selected.</div>
                         ) : (
-                            <div className="grid gap-6 md:grid-cols-[280px_1fr]">
+                            <div className="flex-1 overflow-y-auto p-6 pt-4 grid gap-6 md:grid-cols-[280px_1fr]">
                                 {/* Product Image Showcase */}
                                 <div className="space-y-4">
                                     <div className="flex aspect-square items-center justify-center rounded-2xl bg-muted/50 p-6 border border-dashed border-muted-foreground/20">
@@ -1026,7 +1028,7 @@ export default function Products() {
                             </div>
                         )}
 
-                        <DialogFooter className="border-t pt-4">
+                        <DialogFooter className="bg-muted/50 p-4 border-t px-6">
                             <Button variant="outline" onClick={() => setDetailsProduct(null)} className="font-bold">
                                 Close
                             </Button>
@@ -1049,250 +1051,278 @@ export default function Products() {
                             }
                         }}
                     >
-                        <DialogContent className="sm:max-w-6xl">
-                        <DialogHeader>
-                            <DialogTitle>Edit Product</DialogTitle>
-                            <DialogDescription>Update product information.</DialogDescription>
-                        </DialogHeader>
+                        <DialogContent className="!w-[86vw] sm:!max-w-6xl max-h-[90svh] overflow-hidden flex flex-col p-0 border-none shadow-2xl">
+                            <DialogHeader className="bg-orange-600/10 p-6 pb-5 border-b border-orange-100 dark:border-orange-900/30">
+                                <DialogTitle className="text-xl font-bold flex items-center gap-2 text-orange-900 dark:text-orange-100">
+                                    <Package className="h-5 w-5 text-orange-600" />
+                                    Edit Product
+                                </DialogTitle>
+                                <DialogDescription className="text-orange-800/70 dark:text-orange-200/60 font-medium">
+                                    Update product information.
+                                </DialogDescription>
+                            </DialogHeader>
 
-                        {!editProduct ? (
-                            <div className="text-sm text-muted-foreground">No product selected.</div>
-                        ) : (
-                            <div className="grid gap-4 lg:grid-cols-[360px_1fr]">
-                                <div className="rounded-lg bg-muted p-6">
-                                    <div className="flex items-center justify-center">
-                                        {editProductImagePreviewUrl ? (
-                                            <img
-                                                src={editProductImagePreviewUrl}
-                                                alt={editProduct.name || 'Product'}
-                                                className="h-56 w-full max-w-sm rounded-xl object-cover border"
-                                            />
-                                        ) : (
-                                            <div className="h-40 w-full max-w-sm rounded-xl bg-orange-100 flex items-center justify-center dark:bg-orange-950">
-                                                <Package className="h-10 w-10 text-orange-600" />
+                            {!editProduct ? (
+                                <div className="p-6 text-sm text-muted-foreground">No product selected.</div>
+                            ) : (
+                                <div className="flex-1 overflow-y-auto p-6 pt-4">
+                                    <div className="grid gap-3 lg:grid-cols-3">
+                                        <div className="rounded-lg border bg-card p-4">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <div className="text-sm font-semibold">Product Image</div>
+                                                    <div className="text-xs text-muted-foreground">Update the display image</div>
+                                                </div>
                                             </div>
-                                        )}
-                                    </div>
 
-                                    <div className="mt-4 space-y-1">
-                                        <label className="text-xs font-medium text-muted-foreground">Product image</label>
-                                        <Input
-                                            type="file"
-                                            accept="image/*"
-                                            onChange={(e) => {
-                                                const file = e.target.files?.[0] ?? null;
+                                            <div className="mt-3 flex items-center justify-center">
+                                                {editProductImagePreviewUrl ? (
+                                                    <img
+                                                        src={editProductImagePreviewUrl}
+                                                        alt={editProduct.name || 'Product'}
+                                                        className="h-32 w-full max-w-[200px] rounded-xl object-cover border"
+                                                    />
+                                                ) : (
+                                                    <div className="h-32 w-full max-w-[200px] rounded-xl bg-muted/50 flex flex-col items-center justify-center border border-dashed text-muted-foreground/50">
+                                                        <Package className="h-8 w-8 mb-1" />
+                                                    </div>
+                                                )}
+                                            </div>
 
-                                                if (editProductImagePreviewUrl) {
-                                                    URL.revokeObjectURL(editProductImagePreviewUrl);
-                                                }
+                                            <div className="mt-4 space-y-1">
+                                                <label className="text-xs font-medium text-muted-foreground">Upload</label>
+                                                <Input
+                                                    type="file"
+                                                    accept="image/*"
+                                                    onChange={(e) => {
+                                                        const file = e.target.files?.[0] ?? null;
 
-                                                setEditProductImage(file);
-                                                setEditProductImagePreviewUrl(file ? URL.createObjectURL(file) : productImageUrl(editProduct.image_path));
-                                            }}
-                                        />
+                                                        if (editProductImagePreviewUrl) {
+                                                            URL.revokeObjectURL(editProductImagePreviewUrl);
+                                                        }
+
+                                                        setEditProductImage(file);
+                                                        setEditProductImagePreviewUrl(file ? URL.createObjectURL(file) : productImageUrl(editProduct.image_path));
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        <div className="grid gap-3">
+                                            <div className="rounded-lg border bg-card p-4">
+                                                <div className="flex items-center justify-between">
+                                                    <div>
+                                                        <div className="text-sm font-semibold">Basic Information</div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="mt-3 grid gap-2.5">
+                                                    <div className="space-y-1">
+                                                        <label className="text-xs font-medium text-muted-foreground">
+                                                            Product name <span className="text-destructive">*</span>
+                                                        </label>
+                                                        <Input
+                                                            value={editProduct.name}
+                                                            onChange={(e) => setEditProduct((p) => (p ? { ...p, name: e.target.value } : p))}
+                                                            className="h-8 text-sm"
+                                                        />
+                                                    </div>
+
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <div className="space-y-1">
+                                                            <label className="text-xs font-medium text-muted-foreground">Category</label>
+                                                            <Select
+                                                                value={editProduct.category ?? ''}
+                                                                onValueChange={(value: any) =>
+                                                                    setEditProduct((p) => (p ? { ...p, category: value } : p))
+                                                                }
+                                                            >
+                                                                <SelectTrigger className="h-8 text-xs">
+                                                                    <SelectValue placeholder="Select category" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    {categories.filter((c) => c !== 'All').map((c) => (
+                                                                        <SelectItem key={c} value={c}>
+                                                                            {c}
+                                                                        </SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <label className="text-xs font-medium text-muted-foreground">Brand</label>
+                                                            <Input
+                                                                value={String(editProduct.brand ?? '')}
+                                                                onChange={(e) => setEditProduct((p) => (p ? { ...p, brand: e.target.value } : p))}
+                                                                placeholder="e.g. Bosch"
+                                                                className="h-8 text-xs"
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <div className="space-y-1">
+                                                            <label className="text-xs font-medium text-muted-foreground">
+                                                                SKU <span className="text-destructive">*</span>
+                                                            </label>
+                                                            <div className="flex items-center gap-1">
+                                                                <Input
+                                                                    value={editProduct.sku}
+                                                                    onChange={(e) => setEditProduct((p) => (p ? { ...p, sku: e.target.value } : p))}
+                                                                    className="h-8 text-xs"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <label className="text-xs font-medium text-muted-foreground">Barcode</label>
+                                                            <div className="flex items-center gap-1">
+                                                                <Input
+                                                                    value={String(editProduct.barcode_value ?? '')}
+                                                                    onChange={(e) => setEditProduct((p) => (p ? { ...p, barcode_value: e.target.value } : p))}
+                                                                    placeholder="Auto / scan"
+                                                                    className="h-8 text-xs"
+                                                                />
+                                                                <Button
+                                                                    type="button"
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    onClick={() =>
+                                                                        setEditProduct((p) => (p ? { ...p, barcode_value: generateBarcodeValue(p.sku) } : p))
+                                                                    }
+                                                                    className="shrink-0 h-8 px-2 text-xs"
+                                                                >
+                                                                    Gen
+                                                                </Button>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <div className="space-y-1">
+                                                            <label className="text-xs font-medium text-muted-foreground">UoM</label>
+                                                            <Select
+                                                                value={String(editProduct.unit_of_measure ?? 'pc')}
+                                                                onValueChange={(value) =>
+                                                                    setEditProduct((p) => (p ? { ...p, unit_of_measure: value } : p))
+                                                                }
+                                                            >
+                                                                <SelectTrigger className="h-8 text-xs">
+                                                                    <SelectValue placeholder="Select UoM" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    {uomOptions.map((u) => (
+                                                                        <SelectItem key={u} value={u}>
+                                                                            {u}
+                                                                        </SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <label className="text-xs font-medium text-muted-foreground">Color</label>
+                                                            <Input
+                                                                value={String(editProduct.color ?? '')}
+                                                                onChange={(e) => setEditProduct((p) => (p ? { ...p, color: e.target.value } : p))}
+                                                                placeholder="e.g. Black"
+                                                                className="h-8 text-xs"
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="grid gap-3">
+                                            <div className="rounded-lg border bg-card p-4">
+                                                <div>
+                                                    <div className="text-sm font-semibold">Pricing & Stock</div>
+                                                </div>
+
+                                                <div className="mt-3 grid gap-2.5">
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <div className="space-y-1">
+                                                            <label className="text-xs font-medium text-muted-foreground">Unit price (₱)</label>
+                                                            <Input
+                                                                type="number"
+                                                                className="h-8 text-sm"
+                                                                value={Number(editProduct.price) || 0}
+                                                                onChange={(e) =>
+                                                                    setEditProduct((p) => (p ? { ...p, price: Number(e.target.value) || 0 } : p))
+                                                                }
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <label className="text-xs font-medium text-muted-foreground">
+                                                                Purchase cost (₱)
+                                                            </label>
+                                                            <Input
+                                                                type="number"
+                                                                className="h-8 text-sm"
+                                                                value={Number(editProduct.purchase_cost) || 0}
+                                                                onChange={(e) =>
+                                                                    setEditProduct((p) => (p ? { ...p, purchase_cost: Number(e.target.value) || 0 } : p))
+                                                                }
+                                                            />
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <div className="space-y-1">
+                                                            <label className="text-xs font-medium text-muted-foreground">Stock Threshold</label>
+                                                            <Input
+                                                                type="number"
+                                                                className="h-8 text-sm"
+                                                                value={Number(editProduct.restocking_level) || 0}
+                                                                onChange={(e) =>
+                                                                    setEditProduct((p) => (p ? { ...p, restocking_level: Number(e.target.value) || 0 } : p))
+                                                                }
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="rounded-lg border bg-card p-4">
+                                                <div>
+                                                    <div className="text-sm font-semibold">Description</div>
+                                                </div>
+
+                                                <div className="mt-2 space-y-1">
+                                                    <textarea
+                                                        value={String(editProduct.description ?? '')}
+                                                        onChange={(e) => setEditProduct((p) => (p ? { ...p, description: e.target.value } : p))}
+                                                        placeholder="Optional product details..."
+                                                        className="min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-xs ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
+                            )}
 
-                                <div className="grid gap-3 max-h-[70vh] overflow-auto pr-1">
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-medium text-muted-foreground">Category</label>
-                                        <Select
-                                            value={editProduct.category ?? ''}
-                                            onValueChange={(value: any) =>
-                                                setEditProduct((p) => (p ? { ...p, category: value } : p))
-                                            }
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select category" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {categories.filter((c) => c !== 'All').map((c) => (
-                                                    <SelectItem key={c} value={c}>
-                                                        {c}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="space-y-1">
-                                            <label className="text-xs font-medium text-muted-foreground">
-                                                SKU <span className="text-destructive">*</span>
-                                            </label>
-                                            <Input
-                                                value={editProduct.sku}
-                                                onChange={(e) =>
-                                                    setEditProduct((p) => (p ? { ...p, sku: e.target.value } : p))
-                                                }
-                                            />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-xs font-medium text-muted-foreground">
-                                                Product name <span className="text-destructive">*</span>
-                                            </label>
-                                            <Input
-                                                value={editProduct.name}
-                                                onChange={(e) =>
-                                                    setEditProduct((p) => (p ? { ...p, name: e.target.value } : p))
-                                                }
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="space-y-1">
-                                            <label className="text-xs font-medium text-muted-foreground">Unit price (₱)</label>
-                                            <Input
-                                                type="number"
-                                                value={Number(editProduct.price) || 0}
-                                                onChange={(e) =>
-                                                    setEditProduct((p) =>
-                                                        p ? { ...p, price: Number(e.target.value) || 0 } : p
-                                                    )
-                                                }
-                                            />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <label className="text-xs font-medium text-muted-foreground">
-                                                Purchase cost (₱) <span className="text-destructive">*</span>
-                                            </label>
-                                            <Input
-                                                type="number"
-                                                value={Number(editProduct.purchase_cost) || 0}
-                                                onChange={(e) =>
-                                                    setEditProduct((p) =>
-                                                        p ? { ...p, purchase_cost: Number(e.target.value) || 0 } : p
-                                                    )
-                                                }
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div className="space-y-1">
-                                            <label className="text-xs font-medium text-muted-foreground">Stock Threshold</label>
-                                            <Input
-                                                type="number"
-                                                value={Number(editProduct.restocking_level) || 0}
-                                                onChange={(e) =>
-                                                    setEditProduct((p) =>
-                                                        p
-                                                            ? {
-                                                                ...p,
-                                                                restocking_level: Number(e.target.value) || 0,
-                                                            }
-                                                            : p
-                                                    )
-                                                }
-                                            />
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-medium text-muted-foreground">Barcode</label>
-                                        <div className="flex items-center gap-2">
-                                            <Input
-                                                value={String(editProduct.barcode_value ?? '')}
-                                                onChange={(e) =>
-                                                    setEditProduct((p) => (p ? { ...p, barcode_value: e.target.value } : p))
-                                                }
-                                                placeholder="Auto / scan"
-                                            />
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                size="sm"
-                                                onClick={() =>
-                                                    setEditProduct((p) =>
-                                                        p ? { ...p, barcode_value: generateBarcodeValue(p.sku) } : p,
-                                                    )
-                                                }
-                                                className="shrink-0"
-                                            >
-                                                Generate
-                                            </Button>
-                                        </div>
-                                    </div>
-
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-medium text-muted-foreground">Unit of Measure</label>
-                                        <Select
-                                            value={String(editProduct.unit_of_measure ?? 'pc')}
-                                            onValueChange={(value) =>
-                                                setEditProduct((p) => (p ? { ...p, unit_of_measure: value } : p))
-                                            }
-                                        >
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select UoM" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {uomOptions.map((u) => (
-                                                    <SelectItem key={u} value={u}>
-                                                        {u}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                    </div>
-
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-medium text-muted-foreground">Brand</label>
-                                        <Input
-                                            value={String(editProduct.brand ?? '')}
-                                            onChange={(e) =>
-                                                setEditProduct((p) => (p ? { ...p, brand: e.target.value } : p))
-                                            }
-                                            placeholder="e.g. Bosch"
-                                        />
-                                    </div>
-
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-medium text-muted-foreground">Color</label>
-                                        <Input
-                                            value={String(editProduct.color ?? '')}
-                                            onChange={(e) =>
-                                                setEditProduct((p) => (p ? { ...p, color: e.target.value } : p))
-                                            }
-                                            placeholder="e.g. Black"
-                                        />
-                                    </div>
-
-                                    <div className="space-y-1">
-                                        <label className="text-xs font-medium text-muted-foreground">Description</label>
-                                        <textarea
-                                            value={String(editProduct.description ?? '')}
-                                            onChange={(e) =>
-                                                setEditProduct((p) => (p ? { ...p, description: e.target.value } : p))
-                                            }
-                                            placeholder="Optional product details"
-                                            className="min-h-[84px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        <DialogFooter>
-                            <Button
-                                variant="outline"
-                                onClick={() => {
-                                    setIsEditProductOpen(false);
-                                    setEditProduct(null);
-                                    setEditProductImage(null);
-                                    if (editProductImagePreviewUrl) {
-                                        URL.revokeObjectURL(editProductImagePreviewUrl);
-                                    }
-                                    setEditProductImagePreviewUrl(null);
-                                }}
-                            >
-                                Cancel
-                            </Button>
-                            <Button onClick={onUpdateProduct} disabled={!editProduct}>
-                                Save Changes
-                            </Button>
-                        </DialogFooter>
-                    </DialogContent>
+                            <DialogFooter className="bg-muted/50 p-4 border-t px-6">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => {
+                                        setIsEditProductOpen(false);
+                                        setEditProduct(null);
+                                        setEditProductImage(null);
+                                        if (editProductImagePreviewUrl) {
+                                            URL.revokeObjectURL(editProductImagePreviewUrl);
+                                        }
+                                        setEditProductImagePreviewUrl(null);
+                                    }}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button type="button" onClick={onUpdateProduct} disabled={!editProduct}>
+                                    Save Changes
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
                 </Dialog>
                 )}
 
@@ -1308,16 +1338,21 @@ export default function Products() {
                             }
                         }}
                     >
-                        <DialogContent className="sm:max-w-3xl">
-                            <DialogHeader>
-                                <DialogTitle>Generate Barcodes</DialogTitle>
-                                <DialogDescription>Generate printable barcodes for the selected product.</DialogDescription>
+                        <DialogContent className="!w-[86vw] sm:!max-w-4xl max-h-[90svh] overflow-hidden flex flex-col p-0 border-none shadow-2xl">
+                            <DialogHeader className="bg-orange-600/10 p-6 pb-5 border-b border-orange-100 dark:border-orange-900/30">
+                                <DialogTitle className="text-xl font-bold flex items-center gap-2 text-orange-900 dark:text-orange-100">
+                                    <Barcode className="h-5 w-5 text-orange-600" />
+                                    Generate Barcodes
+                                </DialogTitle>
+                                <DialogDescription className="text-orange-800/70 dark:text-orange-200/60 font-medium">
+                                    Generate printable barcodes for the selected product.
+                                </DialogDescription>
                             </DialogHeader>
 
                             {!barcodeProduct ? (
-                                <div className="text-sm text-muted-foreground">No product selected.</div>
+                                <div className="p-6 text-sm text-muted-foreground">No product selected.</div>
                             ) : (
-                                <div className="space-y-4">
+                                <div className="flex-1 overflow-y-auto p-6 pt-4 space-y-4">
                                     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                                         <div className="min-w-0">
                                             <div className="font-semibold truncate">{barcodeProduct.name}</div>
@@ -1371,15 +1406,29 @@ export default function Products() {
                                 </div>
                             )}
 
-                            <DialogFooter className="gap-2 sm:gap-0">
-                                {barcodesGenerated && (
-                                    <>
-                                        <Button variant="outline" onClick={generateBarcodes}>
-                                            Regenerate
-                                        </Button>
-                                        <Button onClick={printBarcodes}>Print Barcodes</Button>
-                                    </>
-                                )}
+                            <DialogFooter className="bg-muted/50 p-4 border-t px-6 gap-2 justify-between flex-row">
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => {
+                                        closeBarcodeDialog();
+                                        if (barcodeContainerRef.current) {
+                                            barcodeContainerRef.current.innerHTML = '';
+                                        }
+                                    }}
+                                >
+                                    Cancel
+                                </Button>
+                                <div className="flex items-center gap-2">
+                                    {barcodesGenerated && (
+                                        <>
+                                            <Button variant="outline" onClick={generateBarcodes}>
+                                                Regenerate
+                                            </Button>
+                                            <Button onClick={printBarcodes}>Print Barcodes</Button>
+                                        </>
+                                    )}
+                                </div>
                             </DialogFooter>
                         </DialogContent>
                     </Dialog>
@@ -1439,15 +1488,20 @@ export default function Products() {
                             }
                         }}
                     >
-                        <DialogContent className="!w-[86vw] sm:!max-w-6xl max-h-[90svh] overflow-hidden flex flex-col">
-                            <DialogHeader>
-                                <DialogTitle>Add Product</DialogTitle>
-                                <DialogDescription>Fill in the product details to add it to the catalog.</DialogDescription>
+                        <DialogContent className="!w-[86vw] sm:!max-w-6xl max-h-[90svh] overflow-hidden flex flex-col p-0 border-none shadow-2xl">
+                            <DialogHeader className="bg-orange-600/10 p-6 pb-5 border-b border-orange-100 dark:border-orange-900/30">
+                                <DialogTitle className="text-xl font-bold flex items-center gap-2 text-orange-900 dark:text-orange-100">
+                                    <Package className="h-5 w-5 text-orange-600" />
+                                    Add Product
+                                </DialogTitle>
+                                <DialogDescription className="text-orange-800/70 dark:text-orange-200/60 font-medium">
+                                    Fill in the product details to add it to the catalog.
+                                </DialogDescription>
                             </DialogHeader>
 
-                            <div className="flex-1 overflow-y-auto pr-1">
-                                <div className="grid gap-4 lg:grid-cols-3">
-                                    <div className="rounded-lg border bg-card p-5">
+                            <div className="flex-1 overflow-y-auto p-6 pt-4">
+                                <div className="grid gap-3 lg:grid-cols-3">
+                                    <div className="rounded-lg border bg-card p-4">
                                     <div className="flex items-center justify-between">
                                         <div>
                                             <div className="text-sm font-semibold">Product Image</div>
@@ -1455,16 +1509,16 @@ export default function Products() {
                                         </div>
                                     </div>
 
-                                    <div className="mt-4 flex items-center justify-center">
+                                    <div className="mt-3 flex items-center justify-center">
                                         {newProductImagePreviewUrl ? (
                                             <img
                                                 src={newProductImagePreviewUrl}
                                                 alt={newProduct.name || 'New product'}
-                                                className="h-56 w-full max-w-sm rounded-xl object-cover border"
+                                                className="h-32 w-full max-w-[200px] rounded-xl object-cover border"
                                             />
                                         ) : (
-                                            <div className="h-40 w-full max-w-sm rounded-xl bg-muted flex items-center justify-center">
-                                                <Package className="h-10 w-10 text-muted-foreground" />
+                                            <div className="h-32 w-full max-w-[200px] rounded-xl bg-muted/50 flex flex-col items-center justify-center border border-dashed text-muted-foreground/50">
+                                                <Package className="h-8 w-8 mb-1" />
                                             </div>
                                         )}
                                     </div>
@@ -1488,50 +1542,15 @@ export default function Products() {
                                     </div>
                                 </div>
 
-                                <div className="grid gap-4">
-                                    <div className="rounded-lg border bg-card p-5">
+                                <div className="grid gap-3">
+                                    <div className="rounded-lg border bg-card p-4">
                                         <div className="flex items-center justify-between">
                                             <div>
                                                 <div className="text-sm font-semibold">Basic Information</div>
-                                                <div className="text-xs text-muted-foreground">Required fields marked with *</div>
                                             </div>
                                         </div>
 
-                                        <div className="mt-4 grid gap-3">
-                                            <div className="space-y-1">
-                                                <label className="text-xs font-medium text-muted-foreground">Category</label>
-                                                <Select
-                                                    value={newProduct.category}
-                                                    onValueChange={(value: any) => setNewProduct((p) => ({ ...p, category: value }))}
-                                                >
-                                                    <SelectTrigger>
-                                                        <SelectValue placeholder="Select category" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        {categories.filter((c) => c !== 'All').map((c) => (
-                                                            <SelectItem key={c} value={c}>
-                                                                {c}
-                                                            </SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                            </div>
-
-                                            <div className="space-y-1">
-                                                <label className="text-xs font-medium text-muted-foreground">
-                                                    SKU <span className="text-destructive">*</span>
-                                                </label>
-                                                <div className="flex items-center gap-2">
-                                                    <Input
-                                                        value={newProduct.sku}
-                                                        onChange={(e) => setNewProduct((p) => ({ ...p, sku: e.target.value }))}
-                                                    />
-                                                    <Button type="button" variant="outline" size="sm" onClick={generateSku} className="shrink-0">
-                                                        Auto
-                                                    </Button>
-                                                </div>
-                                            </div>
-
+                                        <div className="mt-3 grid gap-2.5">
                                             <div className="space-y-1">
                                                 <label className="text-xs font-medium text-muted-foreground">
                                                     Product name <span className="text-destructive">*</span>
@@ -1539,88 +1558,130 @@ export default function Products() {
                                                 <Input
                                                     value={newProduct.name}
                                                     onChange={(e) => setNewProduct((p) => ({ ...p, name: e.target.value }))}
+                                                    className="h-8 text-sm"
                                                 />
                                             </div>
 
-                                            <div className="space-y-1">
-                                                <label className="text-xs font-medium text-muted-foreground">Barcode</label>
-                                                <div className="flex items-center gap-2">
-                                                    <Input
-                                                        value={String(newProduct.barcode_value ?? '')}
-                                                        onChange={(e) => setNewProduct((p) => ({ ...p, barcode_value: e.target.value }))}
-                                                        placeholder="Auto / scan"
-                                                    />
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() =>
-                                                            setNewProduct((p) => ({
-                                                                ...p,
-                                                                barcode_value: generateBarcodeValue(p.sku),
-                                                            }))
-                                                        }
-                                                        className="shrink-0"
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-medium text-muted-foreground">Category</label>
+                                                    <Select
+                                                        value={newProduct.category}
+                                                        onValueChange={(value: any) => setNewProduct((p) => ({ ...p, category: value }))}
                                                     >
-                                                        Generate
-                                                    </Button>
+                                                        <SelectTrigger className="h-8 text-xs">
+                                                            <SelectValue placeholder="Select category" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {categories.filter((c) => c !== 'All').map((c) => (
+                                                                <SelectItem key={c} value={c}>
+                                                                    {c}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-medium text-muted-foreground">Brand</label>
+                                                    <Input
+                                                        value={String(newProduct.brand ?? '')}
+                                                        onChange={(e) => setNewProduct((p) => ({ ...p, brand: e.target.value }))}
+                                                        placeholder="e.g. Bosch"
+                                                        className="h-8 text-xs"
+                                                    />
                                                 </div>
                                             </div>
 
-                                            <div className="space-y-1">
-                                                <label className="text-xs font-medium text-muted-foreground">Unit of Measure</label>
-                                                <Select
-                                                    value={String(newProduct.unit_of_measure ?? 'pc')}
-                                                    onValueChange={(value) => setNewProduct((p) => ({ ...p, unit_of_measure: value }))}
-                                                >
-                                                    <SelectTrigger>
-                                                        <SelectValue placeholder="Select UoM" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        {uomOptions.map((u) => (
-                                                            <SelectItem key={u} value={u}>
-                                                                {u}
-                                                            </SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-medium text-muted-foreground">
+                                                        SKU <span className="text-destructive">*</span>
+                                                    </label>
+                                                    <div className="flex items-center gap-1">
+                                                        <Input
+                                                            value={newProduct.sku}
+                                                            onChange={(e) => setNewProduct((p) => ({ ...p, sku: e.target.value }))}
+                                                            className="h-8 text-xs"
+                                                        />
+                                                        <Button type="button" variant="outline" size="sm" onClick={generateSku} className="shrink-0 h-8 px-2 text-xs">
+                                                            Auto
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-medium text-muted-foreground">Barcode</label>
+                                                    <div className="flex items-center gap-1">
+                                                        <Input
+                                                            value={String(newProduct.barcode_value ?? '')}
+                                                            onChange={(e) => setNewProduct((p) => ({ ...p, barcode_value: e.target.value }))}
+                                                            placeholder="Auto / scan"
+                                                            className="h-8 text-xs"
+                                                        />
+                                                        <Button
+                                                            type="button"
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() =>
+                                                                setNewProduct((p) => ({
+                                                                    ...p,
+                                                                    barcode_value: generateBarcodeValue(p.sku),
+                                                                }))
+                                                            }
+                                                            className="shrink-0 h-8 px-2 text-xs"
+                                                        >
+                                                            Gen
+                                                        </Button>
+                                                    </div>
+                                                </div>
                                             </div>
 
-                                            <div className="space-y-1">
-                                                <label className="text-xs font-medium text-muted-foreground">Brand</label>
-                                                <Input
-                                                    value={String(newProduct.brand ?? '')}
-                                                    onChange={(e) => setNewProduct((p) => ({ ...p, brand: e.target.value }))}
-                                                    placeholder="e.g. Bosch"
-                                                />
-                                            </div>
-
-                                            <div className="space-y-1">
-                                                <label className="text-xs font-medium text-muted-foreground">Color</label>
-                                                <Input
-                                                    value={String(newProduct.color ?? '')}
-                                                    onChange={(e) => setNewProduct((p) => ({ ...p, color: e.target.value }))}
-                                                    placeholder="e.g. Black"
-                                                />
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-medium text-muted-foreground">UoM</label>
+                                                    <Select
+                                                        value={String(newProduct.unit_of_measure ?? 'pc')}
+                                                        onValueChange={(value) => setNewProduct((p) => ({ ...p, unit_of_measure: value }))}
+                                                    >
+                                                        <SelectTrigger className="h-8 text-xs">
+                                                            <SelectValue placeholder="Select UoM" />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {uomOptions.map((u) => (
+                                                                <SelectItem key={u} value={u}>
+                                                                    {u}
+                                                                </SelectItem>
+                                                            ))}
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-medium text-muted-foreground">Color</label>
+                                                    <Input
+                                                        value={String(newProduct.color ?? '')}
+                                                        onChange={(e) => setNewProduct((p) => ({ ...p, color: e.target.value }))}
+                                                        placeholder="e.g. Black"
+                                                        className="h-8 text-xs"
+                                                    />
+                                                </div>
                                             </div>
 
                                         </div>
                                     </div>
                                 </div>
 
-                                <div className="grid gap-4">
-                                    <div className="rounded-lg border bg-card p-5">
+                                <div className="grid gap-3">
+                                    <div className="rounded-lg border bg-card p-4">
                                         <div>
                                             <div className="text-sm font-semibold">Pricing & Stock</div>
-                                            <div className="text-xs text-muted-foreground">Set initial inventory for your branch</div>
                                         </div>
 
-                                        <div className="mt-4 grid gap-3">
+                                        <div className="mt-3 grid gap-2.5">
                                             <div className="grid grid-cols-2 gap-3">
                                                 <div className="space-y-1">
                                                     <label className="text-xs font-medium text-muted-foreground">Unit price (₱)</label>
                                                     <Input
                                                         type="number"
+                                                        className="h-8 text-sm"
                                                         value={Number(newProduct.price) || 0}
                                                         onChange={(e) =>
                                                             setNewProduct((p) => ({ ...p, price: Number(e.target.value) || 0 }))
@@ -1629,10 +1690,11 @@ export default function Products() {
                                                 </div>
                                                 <div className="space-y-1">
                                                     <label className="text-xs font-medium text-muted-foreground">
-                                                        Purchase cost (₱) <span className="text-destructive">*</span>
+                                                        Purchase cost (₱)
                                                     </label>
                                                     <Input
                                                         type="number"
+                                                        className="h-8 text-sm"
                                                         value={Number(newProduct.purchase_cost) || 0}
                                                         onChange={(e) =>
                                                             setNewProduct((p) => ({ ...p, purchase_cost: Number(e.target.value) || 0 }))
@@ -1646,6 +1708,7 @@ export default function Products() {
                                                     <label className="text-xs font-medium text-muted-foreground">Initial stock</label>
                                                     <Input
                                                         type="number"
+                                                        className="h-8 text-sm"
                                                         value={Number(newProduct.stock) || 0}
                                                         onChange={(e) =>
                                                             setNewProduct((p) => ({ ...p, stock: Number(e.target.value) || 0 }))
@@ -1653,36 +1716,35 @@ export default function Products() {
                                                         placeholder="e.g. 10"
                                                     />
                                                 </div>
-                                            </div>
-
-                                            <div className="space-y-1">
-                                                <label className="text-xs font-medium text-muted-foreground">Stock Threshold</label>
-                                                <Input
-                                                    type="number"
-                                                    value={Number(newProduct.restocking_level) || 0}
-                                                    onChange={(e) =>
-                                                        setNewProduct((p) => ({
-                                                            ...p,
-                                                            restocking_level: Number(e.target.value) || 0,
-                                                        }))
-                                                    }
-                                                />
+                                                <div className="space-y-1">
+                                                    <label className="text-xs font-medium text-muted-foreground">Stock Threshold</label>
+                                                    <Input
+                                                        type="number"
+                                                        className="h-8 text-sm"
+                                                        value={Number(newProduct.restocking_level) || 0}
+                                                        onChange={(e) =>
+                                                            setNewProduct((p) => ({
+                                                                ...p,
+                                                                restocking_level: Number(e.target.value) || 0,
+                                                            }))
+                                                        }
+                                                    />
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
 
-                                    <div className="rounded-lg border bg-card p-5">
+                                    <div className="rounded-lg border bg-card p-4">
                                         <div>
                                             <div className="text-sm font-semibold">Description</div>
-                                            <div className="text-xs text-muted-foreground">Optional product details</div>
                                         </div>
 
-                                        <div className="mt-4 space-y-1">
+                                        <div className="mt-2 space-y-1">
                                             <textarea
                                                 value={String(newProduct.description ?? '')}
                                                 onChange={(e) => setNewProduct((p) => ({ ...p, description: e.target.value }))}
-                                                placeholder="Optional product details"
-                                                className="min-h-[84px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                                                placeholder="Optional product details..."
+                                                className="min-h-[60px] w-full rounded-md border border-input bg-background px-3 py-2 text-xs ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                                             />
                                         </div>
                                     </div>
@@ -1690,11 +1752,11 @@ export default function Products() {
                                 </div>
                             </div>
 
-                            <DialogFooter>
-                                <Button variant="outline" onClick={() => setIsAddProductOpen(false)}>
+                            <DialogFooter className="bg-muted/50 p-4 border-t px-6">
+                                <Button type="button" variant="outline" onClick={() => setIsAddProductOpen(false)}>
                                     Cancel
                                 </Button>
-                                <Button onClick={onCreateProduct}>
+                                <Button type="button" onClick={onCreateProduct}>
                                     <Plus className="mr-2 h-4 w-4" />
                                     Add Product
                                 </Button>
@@ -1833,7 +1895,7 @@ function ProductCardGrid({
                     </div>
                 )}
             </div>
-            <div className="p-3">
+            <div className="p-2">
                 <div className="truncate text-xs font-semibold group-hover:text-primary transition-colors">
                     {product.name}
                 </div>

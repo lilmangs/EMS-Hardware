@@ -957,14 +957,15 @@ export default function Inventory() {
                     if (!open) setDetailsItem(null);
                 }}
             >
-                <DialogContent className="sm:max-w-4xl p-0 overflow-hidden border-none shadow-2xl transition-all duration-300">
-                    <DialogHeader className="bg-orange-600/30 dark:bg-orange-900/20 p-6 border-b border-orange-100/50 dark:border-orange-900/30">
+                <DialogContent className="!w-[86vw] sm:!max-w-4xl max-h-[90svh] overflow-hidden flex flex-col p-0 border-none shadow-2xl transition-all duration-300">
+                    <DialogHeader className="bg-orange-600/10 p-6 pb-5 border-b border-orange-100 dark:border-orange-900/30">
                         <div className="flex items-center justify-between">
-                            <div className="space-y-1">
-                                <DialogTitle className="flex items-center gap-2 text-2xl font-bold text-orange-950 dark:text-orange-100">
-                                    <Package className="h-6 w-6 text-orange-600" /> Product Details
+                            <div className="space-y-0.5">
+                                <DialogTitle className="text-xl font-bold flex items-center gap-2 text-orange-900 dark:text-orange-100">
+                                    <Info className="h-5 w-5 text-orange-600" />
+                                    Product Details
                                 </DialogTitle>
-                                <DialogDescription className="text-orange-800/70 dark:text-orange-200/60">
+                                <DialogDescription className="text-orange-800/70 dark:text-orange-200/60 font-medium">
                                     Comprehensive stock levels and branch availability.
                                 </DialogDescription>
                             </div>
@@ -1115,6 +1116,12 @@ export default function Inventory() {
                             </div>
                         );
                     })()}
+
+                    <DialogFooter className="bg-muted/50 p-4 border-t px-6 mt-auto">
+                        <Button variant="outline" onClick={() => setDetailsItem(null)} className="font-bold">
+                            Close
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
 
@@ -1128,19 +1135,20 @@ export default function Inventory() {
                     }
                 }}
             >
-                <DialogContent className="sm:max-w-2xl">
-                    <DialogHeader className="bg-orange-600/30 dark:bg-orange-900/20 p-6 -mx-6 -mt-6 mb-6 border-b border-orange-100/50 dark:border-orange-900/30 rounded-t-lg">
-                        <DialogTitle className="flex items-center gap-2 text-orange-950 dark:text-orange-100">
-                            <Barcode className="h-5 w-5" />
-                            Generate Barcodes
-                        </DialogTitle>
-                        <DialogDescription className="text-orange-800/70 dark:text-orange-200/60">
-                            Generate printable barcodes for{' '}
-                            <span className="font-semibold text-foreground">{barcodeDialogItem?.name}</span>
-                        </DialogDescription>
+                <DialogContent className="!w-[86vw] sm:!max-w-4xl max-h-[90svh] overflow-hidden flex flex-col p-0 border-none shadow-2xl transition-all duration-300">
+                    <DialogHeader className="bg-orange-600/10 p-6 pb-5 border-b border-orange-100 dark:border-orange-900/30">
+                        <div className="space-y-0.5">
+                            <DialogTitle className="text-xl font-bold flex items-center gap-2 text-orange-900 dark:text-orange-100">
+                                <Barcode className="h-5 w-5 text-orange-600" />
+                                Generate Barcodes
+                            </DialogTitle>
+                            <DialogDescription className="text-orange-800/70 dark:text-orange-200/60 font-medium">
+                                Generate printable barcodes for <span className="font-semibold">{barcodeDialogItem?.name}</span>
+                            </DialogDescription>
+                        </div>
                     </DialogHeader>
 
-                    <div className="space-y-4">
+                    <div className="flex-1 overflow-y-auto p-6 pt-4 space-y-4">
                         <div className="flex items-center gap-3 rounded-lg border bg-muted/50 p-3">
                             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-950">
                                 <Package className="h-5 w-5 text-orange-600" />
@@ -1213,19 +1221,30 @@ export default function Inventory() {
                         )}
                     </div>
 
-                    <DialogFooter className="gap-2 sm:gap-0">
-                        {barcodesGenerated && (
-                            <>
-                                <Button variant="outline" onClick={generateBarcodes}>
-                                    <Barcode className="mr-2 h-4 w-4" />
-                                    Regenerate
-                                </Button>
-                                <Button onClick={printBarcodes}>
-                                    <Barcode className="mr-2 h-4 w-4" />
-                                    Print Barcodes
-                                </Button>
-                            </>
-                        )}
+                    <DialogFooter className="bg-muted/50 p-4 border-t px-6 gap-2 justify-between flex-row">
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                setBarcodeDialogItem(null);
+                                setBarcodesGenerated(false);
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                        <div className="flex items-center gap-2">
+                            {barcodesGenerated && (
+                                <>
+                                    <Button variant="outline" onClick={generateBarcodes}>
+                                        <Barcode className="mr-2 h-4 w-4" />
+                                        Regenerate
+                                    </Button>
+                                    <Button onClick={printBarcodes}>
+                                        <Barcode className="mr-2 h-4 w-4" />
+                                        Print Barcodes
+                                    </Button>
+                                </>
+                            )}
+                        </div>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

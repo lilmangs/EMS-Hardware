@@ -1,6 +1,6 @@
 import { Head, usePage } from '@inertiajs/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { RefreshCcw, Store, Package, Truck, CheckCircle2, MapPin, Hash, Clock, Boxes, PhilippinePeso, MoreHorizontal } from 'lucide-react';
+import { RefreshCcw, Store, Package, Truck, CheckCircle2, MapPin, Hash, Clock, Boxes, PhilippinePeso, MoreHorizontal, Eye } from 'lucide-react';
 import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
 import { useBranchFilter } from '@/hooks/use-branch-filter';
@@ -123,7 +123,7 @@ export default function DeliveryMonitoring() {
     const activeFetchRef = useRef<AbortController | null>(null);
     const fetchSeqRef = useRef(0);
 
-    const [viewMode, setViewMode] = useState<'list' | 'calendar'>('list');
+    const [viewMode, setViewMode] = useState<'list' | 'calendar'>('calendar');
     const [selectedDelivery, setSelectedDelivery] = useState<DeliveryRecord | null>(null);
     const [statusFilter, setStatusFilter] = useState<'all' | DeliveryStatus>('all');
 

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Head, usePage } from '@inertiajs/react';
-import { Minus, Plus, Search, Trash2, Package, Camera, CameraOff, CheckCircle, AlertCircle, Video, ShoppingCart } from 'lucide-react';
+import { Head, usePage, router } from '@inertiajs/react';
+import { Minus, Plus, Search, Trash2, Package, Camera, CameraOff, CheckCircle, AlertCircle, Video, ShoppingCart, TicketX } from 'lucide-react';
 import { BrowserMultiFormatReader } from '@zxing/browser';
 import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
@@ -96,6 +96,8 @@ export default function Checkout() {
     const [pendingDeliveryReceipt, setPendingDeliveryReceipt] = useState<Receipt | null>(null);
 
     const [createDeliveryOpen, setCreateDeliveryOpen] = useState(false);
+    const [isRefundDialogOpen, setIsRefundDialogOpen] = useState(false);
+    const [refundSaleRef, setRefundSaleRef] = useState('');
     const [deliverySaleRef, setDeliverySaleRef] = useState('');
     const [deliveryCustomerName, setDeliveryCustomerName] = useState('');
     const [deliveryAddress, setDeliveryAddress] = useState('');
@@ -743,147 +745,139 @@ export default function Checkout() {
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title="Checkout" />
-            <div className="flex h-full flex-1 flex-col gap-4 overflow-x-auto bg-background p-4">
-                <h1 className="text-3xl font-bold">Checkout</h1>
+            <div className="flex h-[calc(100vh-4.5rem)] flex-col gap-3 overflow-hidden bg-background p-3">
+                <div className="flex items-center justify-between">
+                    <h1 className="text-2xl font-bold tracking-tight">Checkout</h1>
+                </div>
 
+                <div className="grid flex-1 grid-cols-1 gap-3 overflow-hidden lg:grid-cols-[1.2fr_.8fr]">
+                    <section className="flex flex-col overflow-hidden rounded-xl border border-sidebar-border/70 bg-muted/30 p-3 dark:border-sidebar-border">
+                        {/* Feedback Messages */}
+                        {scannerError && (
+                            <div className="mb-2 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/50 dark:text-red-400">
+                                <AlertCircle className="h-4 w-4 shrink-0" />
+                                {scannerError}
+                            </div>
+                        )}
+                        {scannerSuccess && (
+                            <div className="mb-2 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700 dark:border-green-800 dark:bg-green-950/50 dark:text-green-400">
+                                <CheckCircle className="h-4 w-4 shrink-0" />
+                                {scannerSuccess}
+                            </div>
+                        )}
 
-                <div className="grid gap-4 lg:grid-cols-[1.15fr_.85fr]">
-                    <section className="space-y-4">
-                        <div className="rounded-xl border border-sidebar-border/70 bg-muted/30 p-4 dark:border-sidebar-border">
-                            {/* Feedback Messages */}
-                            {scannerError && (
-                                <div className="mb-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/50 dark:text-red-400">
-                                    <AlertCircle className="h-4 w-4 shrink-0" />
-                                    {scannerError}
-                                </div>
-                            )}
-                            {scannerSuccess && (
-                                <div className="mb-3 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2.5 text-sm text-green-700 dark:border-green-800 dark:bg-green-950/50 dark:text-green-400">
-                                    <CheckCircle className="h-4 w-4 shrink-0" />
-                                    {scannerSuccess}
-                                </div>
-                            )}
+                        {checkoutError && (
+                            <div className="mb-2 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/50 dark:text-red-400">
+                                <AlertCircle className="h-4 w-4 shrink-0" />
+                                {checkoutError}
+                            </div>
+                        )}
 
-                            {checkoutError && (
-                                <div className="mb-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/50 dark:text-red-400">
-                                    <AlertCircle className="h-4 w-4 shrink-0" />
-                                    {checkoutError}
-                                </div>
-                            )}
+                        {checkoutSuccess && (
+                            <div className="mb-2 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700 dark:border-green-800 dark:bg-green-950/50 dark:text-green-400">
+                                <CheckCircle className="h-4 w-4 shrink-0" />
+                                {checkoutSuccess}
+                            </div>
+                        )}
 
-                            {checkoutSuccess && (
-                                <div className="mb-3 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2.5 text-sm text-green-700 dark:border-green-800 dark:bg-green-950/50 dark:text-green-400">
-                                    <CheckCircle className="h-4 w-4 shrink-0" />
-                                    {checkoutSuccess}
-                                </div>
-                            )}
+                        <div className="mb-2 rounded-xl border border-sidebar-border/70 bg-background/60 p-2.5 dark:border-sidebar-border">
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="text-xs font-medium text-muted-foreground">Camera Scanner</div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (isScanning) {
+                                            stopScanning();
+                                            setIsScannerOpen(false);
+                                            return;
+                                        }
+                                        setIsScannerOpen(true);
+                                        startScanning();
+                                    }}
+                                    aria-label={isScanning ? 'Stop scanning' : 'Start camera scan'}
+                                    className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-semibold shadow-sm transition-colors ${isScanning
+                                            ? 'bg-red-600 text-white hover:bg-red-700'
+                                            : 'bg-primary text-primary-foreground hover:bg-primary/90'
+                                        }`}
+                                >
+                                    {isScanning ? (
+                                        <><CameraOff className="h-3.5 w-3.5" /> Stop</>
+                                    ) : (
+                                        <><Camera className="h-3.5 w-3.5" /> Start</>
+                                    )}
+                                </button>
+                            </div>
 
-                            <div className="mb-3 rounded-xl border border-sidebar-border/70 bg-background/60 p-3 dark:border-sidebar-border">
-                                <div className="flex items-center justify-between gap-2">
-                                    <div className="text-sm font-medium text-muted-foreground">Camera Scanner</div>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            if (isScanning) {
-                                                stopScanning();
-                                                setIsScannerOpen(false);
-                                                return;
-                                            }
-                                            setIsScannerOpen(true);
-                                            startScanning();
-                                        }}
-                                        aria-label={isScanning ? 'Stop scanning' : 'Start camera scan'}
-                                        className={`inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold shadow-sm transition-colors ${isScanning
-                                                ? 'bg-red-600 text-white hover:bg-red-700'
-                                                : 'bg-primary text-primary-foreground hover:bg-primary/90'
-                                            }`}
-                                    >
-                                        {isScanning ? (
-                                            <><CameraOff className="h-3.5 w-3.5" /> Stop</>
-                                        ) : (
-                                            <><Camera className="h-3.5 w-3.5" /> Start</>
-                                        )}
-                                    </button>
-                                </div>
+                            {isScannerOpen && (
+                                <>
+                                    <div className="mt-2 relative overflow-hidden rounded-lg border bg-black">
+                                        <video
+                                            ref={videoRef}
+                                            className="w-full h-48 object-cover"
+                                            autoPlay
+                                            playsInline
+                                            muted
+                                        />
 
-                                {isScannerOpen && (
-                                    <>
-                                        <div className="mt-3 relative overflow-hidden rounded-lg border bg-black">
-                                            <video
-                                                ref={videoRef}
-                                                className="w-full h-56 object-cover"
-                                                autoPlay
-                                                playsInline
-                                                muted
-                                            />
-
-                                            <div className="absolute inset-0 pointer-events-none">
-                                                <div className="absolute inset-3 border-2 border-dashed border-white/50 rounded-lg" />
-                                                {isScanning && (
-                                                    <div className="absolute left-3 right-3 top-1/2 h-0.5 bg-green-400/70 animate-pulse" />
-                                                )}
-                                            </div>
-
-                                            <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
-                                                <span className="inline-flex items-center gap-1.5 rounded-md bg-black/60 px-2 py-1 text-xs text-white">
-                                                    <span className={`h-2 w-2 rounded-full ${isScanning ? 'bg-red-500 animate-pulse' : 'bg-white/50'}`} />
-                                                    {isScanning ? 'Scanning...' : 'Starting camera...'}
-                                                </span>
-                                                {lastScanned && (
-                                                    <span className="rounded-md bg-black/60 px-2 py-1 text-xs text-green-400">
-                                                        Last: {lastScanned}
-                                                    </span>
-                                                )}
-                                            </div>
+                                        <div className="absolute inset-0 pointer-events-none">
+                                            <div className="absolute inset-2 border-2 border-dashed border-white/50 rounded-lg" />
+                                            {isScanning && (
+                                                <div className="absolute left-2 right-2 top-1/2 h-0.5 bg-green-400/70 animate-pulse" />
+                                            )}
                                         </div>
 
-                                        {!isScanning && (
-                                            <div className="mt-3 flex items-center justify-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                                                <Video className="h-4 w-4" />
-                                                Starting camera...
-                                            </div>
-                                        )}
-                                    </>
-                                )}
-                            </div>
+                                        <div className="absolute bottom-1.5 left-1.5 right-1.5 flex items-center justify-between">
+                                            <span className="inline-flex items-center gap-1.5 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] text-white">
+                                                <span className={`h-1.5 w-1.5 rounded-full ${isScanning ? 'bg-red-500 animate-pulse' : 'bg-white/50'}`} />
+                                                {isScanning ? 'Scanning...' : 'Starting...'}
+                                            </span>
+                                            {lastScanned && (
+                                                <span className="rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] text-green-400 truncate max-w-[100px]">
+                                                    {lastScanned}
+                                                </span>
+                                            )}
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+                        </div>
 
-                            <div className="mt-3 flex items-center gap-2 rounded-lg border-border bg-background px-3 py-2">
-                                <Search className="h-4 w-4 text-muted-foreground" />
-                                <input
-                                    className="w-full bg-transparent text-sm outline-none"
-                                    placeholder="Search item"
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                />
-                            </div>
+                        <div className="mb-3 flex items-center gap-2 rounded-lg border border-border bg-background px-3 py-1.5 focus-within:ring-1 focus-within:ring-ring">
+                            <Search className="h-3.5 w-3.5 text-muted-foreground" />
+                            <input
+                                className="w-full bg-transparent text-sm outline-none"
+                                placeholder="Search item"
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                            />
+                        </div>
 
-                            <div className="mt-4 flex items-center justify-between">
-                                <div className="flex items-center gap-2 text-sm font-semibold">
-                                    <ShoppingCart className="h-4 w-4 text-orange-600" />
-                                    Quick Selection Items
-                                </div>
+                        <div className="mb-2 flex items-center justify-between">
+                            <div className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                <ShoppingCart className="h-3.5 w-3.5 text-orange-600" />
+                                Products
                             </div>
+                        </div>
 
-                            <div className="mt-4 max-h-[60vh] overflow-auto pr-1">
-                                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                                    {filteredProducts.map((p) => (
-                                        <ProductCard key={p.id} product={p} onAddToCart={addProductToCart} inCartQty={cartQtyFor(p.id)} />
-                                    ))}
-                                </div>
+                        <div className="flex-1 overflow-auto pr-1">
+                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                                {filteredProducts.map((p) => (
+                                    <ProductCard key={p.id} product={p} onAddToCart={addProductToCart} inCartQty={cartQtyFor(p.id)} />
+                                ))}
                             </div>
                         </div>
                     </section>
 
-                    <section className="sticky top-4 self-start">
-                        <div className="flex h-[calc(100vh-8rem)] flex-col overflow-hidden rounded-xl border border-sidebar-border/70 bg-muted/30 p-4 dark:border-sidebar-border">
+                    <section className="flex flex-col overflow-hidden">
+                        <div className="flex h-full flex-col overflow-hidden rounded-xl border border-sidebar-border/70 bg-muted/30 p-3 dark:border-sidebar-border">
                             <div className="mb-3 text-sm font-medium text-muted-foreground">
-                                Current Sale
+                                Cart Summary
                             </div>
 
                             <div ref={cartListRef} className="flex-1 space-y-3 overflow-auto pr-1">
                                 {cartItems.length === 0 ? (
                                     <div className="rounded-lg border border-dashed border-border bg-background/50 p-4 text-center text-sm text-muted-foreground">
-                                        No items in current sale.
+                                        No items in cart.
                                     </div>
                                 ) : (
                                     cartItems.map((item) => (
@@ -906,8 +900,8 @@ export default function Checkout() {
                                 )}
                             </div>
 
-                            <div className="mt-4 border-t border-border pt-4">
-                                <div className="grid grid-cols-2 gap-y-2 text-sm">
+                            <div className="mt-3 border-t border-border pt-3">
+                                <div className="grid grid-cols-2 gap-y-1.5 text-sm">
                                     <div className="text-muted-foreground">Subtotal:</div>
                                     <div className="text-right font-semibold">
                                         {peso(subtotal)}
@@ -952,19 +946,19 @@ export default function Checkout() {
                                 </div>
                             </div>
 
-                            <div className="my-4 h-px bg-border" />
+                            <div className="my-3 h-px bg-border" />
 
-                            <div className="mb-3 text-sm font-medium text-muted-foreground">
+                            <div className="mb-2 text-sm font-medium text-muted-foreground">
                                 Quick Actions
                             </div>
-                            <div className="grid gap-3 md:grid-cols-2">
+                            <div className="grid gap-2 md:grid-cols-2">
                                 <ActionButton label="Check - Out" onClick={handleCheckout} disabled={cartItems.length === 0} />
                                 <ActionButton label="Create Delivery" onClick={openCreateDelivery} disabled={cartItems.length === 0} />
+                                <ActionButton label="Refund" onClick={() => setIsRefundDialogOpen(true)} />
                                 <ActionButton
                                     label="Clear"
                                     onClick={clearCart}
                                     disabled={cartItems.length === 0}
-                                    className="md:col-span-2"
                                 />
                             </div>
 
@@ -1084,6 +1078,55 @@ export default function Checkout() {
                 </DialogContent>
             </Dialog>
 
+            <Dialog open={isRefundDialogOpen} onOpenChange={setIsRefundDialogOpen}>
+                <DialogContent className="sm:max-w-md border-none p-0 overflow-hidden shadow-2xl">
+                    <DialogHeader className="bg-orange-600/10 p-6 border-b border-orange-100 dark:border-orange-900/30">
+                        <DialogTitle className="text-xl font-bold text-orange-900 dark:text-orange-100 flex items-center gap-2">
+                            <TicketX className="h-5 w-5 text-orange-600" />
+                            Process Refund
+                        </DialogTitle>
+                        <DialogDescription className="text-orange-800/70 dark:text-orange-200/60 mt-1">
+                            Enter the sale reference number to begin the refund process.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="p-6">
+                        <div className="space-y-2">
+                            <label className="text-sm font-semibold text-foreground">Sale Reference</label>
+                            <Input
+                                value={refundSaleRef}
+                                onChange={(e) => setRefundSaleRef(e.target.value)}
+                                placeholder="e.g. TRX-..."
+                                autoFocus
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && refundSaleRef.trim()) {
+                                        e.preventDefault();
+                                        router.visit(`/Refund?ref=${encodeURIComponent(refundSaleRef.trim())}&autoOpen=true`);
+                                    }
+                                }}
+                            />
+                        </div>
+                    </div>
+
+                    <DialogFooter className="bg-muted/50 p-4 border-t px-6">
+                        <Button type="button" variant="outline" onClick={() => setIsRefundDialogOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={() => {
+                                if (refundSaleRef.trim()) {
+                                    router.visit(`/Refund?ref=${encodeURIComponent(refundSaleRef.trim())}&autoOpen=true`);
+                                }
+                            }}
+                            disabled={!refundSaleRef.trim()}
+                        >
+                            <Search className="h-4 w-4 mr-2" />
+                            Lookup Sale
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
         </AppLayout>
     );
 }
@@ -1104,9 +1147,9 @@ function CartRow({
     const lineTotal = item.price * item.qty;
 
     return (
-        <div className="rounded-xl border-border bg-card p-3 shadow-sm">
+        <div className="rounded-xl border-border bg-card p-2 shadow-sm">
             <div className="flex gap-3">
-                <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-muted relative overflow-hidden">
+                <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-muted relative overflow-hidden">
                     <div className="absolute inset-0 bg-gradient-to-br from-orange-100 to-orange-200 opacity-20" />
                     {productImageUrl(product?.image_path) ? (
                         <img
@@ -1230,7 +1273,7 @@ function ProductCard({
                     </div>
                 )}
             </div>
-            <div className="p-3">
+            <div className="p-2">
                 <div className="truncate text-xs font-semibold group-hover:text-primary transition-colors">
                     {product.name}
                 </div>

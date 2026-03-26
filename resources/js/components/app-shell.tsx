@@ -11,12 +11,7 @@ export function AppShell({ children, variant = 'header' }: Props) {
     const page = usePage();
     const isOpen = (page.props as any).sidebarOpen;
     const role = (page.props as any)?.auth?.user?.role;
-    const defaultOpen =
-        role === 'cashier'
-            ? false
-            : typeof isOpen === 'boolean'
-                ? isOpen
-                : true;
+    const defaultOpen = role === 'cashier' ? false : true;
 
     if (variant === 'header') {
         return (

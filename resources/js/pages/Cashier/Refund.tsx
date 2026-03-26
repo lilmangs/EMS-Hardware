@@ -1,5 +1,5 @@
 import { Head, router, usePage } from '@inertiajs/react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AlertCircle, CheckCircle2, MoreHorizontal, Search, TicketX } from 'lucide-react';
 import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
@@ -147,6 +147,22 @@ export default function Refund() {
         setSuccess('');
     }, [saleRef]);
 
+    const autoRunRef = useRef(false);
+    useEffect(() => {
+        if (autoRunRef.current) return;
+        autoRunRef.current = true;
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const refParam = urlParams.get('ref');
+        const autoOpen = urlParams.get('autoOpen');
+        if (refParam) {
+            setSaleRef(refParam);
+            if (autoOpen === 'true') {
+                lookupSale({ openModal: true, ref: refParam });
+            }
+        }
+    }, []);
+
     const refundableTotal = useMemo(() => {
         if (!sale) return 0;
         return sale.items.reduce((sum, it) => sum + it.remaining_qty * it.price, 0);
@@ -160,13 +176,15 @@ export default function Refund() {
         }, 0);
     }, [sale, selectedQty]);
 
-    const lookupSale = useCallback(async (opts?: { openModal?: boolean }) => {
+    const lookupSale = useCallback(async (opts?: { openModal?: boolean; ref?: string }) => {
         const openModal = opts?.openModal !== false;
+        const lookupRef = opts?.ref?.trim() || saleRef.trim();
+
         if (!branchKey) {
             setError('No assigned branch.');
             return;
         }
-        if (!saleRef.trim()) {
+        if (!lookupRef) {
             setError('Enter a sale reference to lookup.');
             return;
         }
@@ -179,7 +197,7 @@ export default function Refund() {
             setSelectedQty({});
 
             const params = new URLSearchParams();
-            params.set('ref', saleRef.trim());
+            params.set('ref', lookupRef);
 
             const res = await fetch(`/Refund/sale?${params.toString()}`, {
                 headers: { Accept: 'application/json' },
