@@ -17,6 +17,10 @@ import {
 } from '@/components/ui/dropdown-menu';
 const breadcrumbs: BreadcrumbItem[] = [
     {
+        title: 'Owner Dashboard',
+        href: '/dashboard',
+    },
+    {
         title: 'Branch Comparison',
         href: '/BranchComparison',
     },

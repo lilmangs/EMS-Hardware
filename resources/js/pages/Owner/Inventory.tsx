@@ -85,6 +85,15 @@ export default function Inventory() {
     const inventoryTitle = user?.role === 'owner' ? 'Inventory Monitoring' : 'Inventory Management';
 
     const breadcrumbs: BreadcrumbItem[] = [
+        ...(user?.role === 'owner' ? [{
+            title: 'Owner Dashboard',
+            href: '/dashboard',
+        }] : []),
+
+        ...(user?.role === 'staff' ? [{
+            title: 'Staff Dashboard',
+            href: '/dashboard',
+        }] : []),
         {
             title: inventoryTitle,
             href: '/inventory',

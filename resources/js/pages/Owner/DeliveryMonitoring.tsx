@@ -32,6 +32,10 @@ import type { EventClickArg } from '@fullcalendar/core';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
+        title: 'Owner Dashboard',
+        href: '/dashboard',
+    },
+    {
         title: 'Delivery Monitoring',
         href: '/owner/delivery-monitoring',
     },

@@ -26,6 +26,10 @@ import {
 import { useMemo, useState } from 'react';
 
 const breadcrumbs: BreadcrumbItem[] = [
+     {                  
+            title: 'Staff Dashboard',
+            href: '/dashboard',
+        },
     {
         title: 'Activity Log',
         href: '/staff/activity-log',

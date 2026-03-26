@@ -8,6 +8,10 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
+        title: 'Owner Dashboard',
+        href: '/dashboard',
+    },
+    {
         title: 'Archive',
         href: '/owner/archive',
     },

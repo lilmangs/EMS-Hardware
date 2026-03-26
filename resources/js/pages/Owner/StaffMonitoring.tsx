@@ -24,6 +24,10 @@ import {
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
+        title: 'Owner Dashboard',
+        href: '/dashboard',
+    },
+    {
         title: 'Staff Monitoring',
         href: '/owner/staff-monitoring',
     },

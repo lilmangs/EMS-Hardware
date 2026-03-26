@@ -23,13 +23,6 @@ import {
     DialogTitle,
 } from '@/components/ui/dialog';
 
-const breadcrumbs: BreadcrumbItem[] = [
-    {
-        title: 'Refund',
-        href: '/Refund',
-    },
-];
-
 type RefundStatus = 'approved' | 'rejected';
 
 type RefundCondition = 'resellable' | 'defective';
@@ -123,9 +116,21 @@ function restockBadge(restock?: boolean) {
 }
 
 export default function Refund() {
-    const { props } = usePage<{ branch_key: string | null; recent_refunds: RecentRefund[] }>();
+    const { props } = usePage<{ branch_key: string | null; recent_refunds: RecentRefund[]; auth?: { user?: { role: string } } }>();
     const branchKey = props.branch_key;
     const recentRefunds = props.recent_refunds ?? [];
+    const userRole = props.auth?.user?.role;
+
+    const breadcrumbs: BreadcrumbItem[] = [
+        ...(userRole === 'cashier' ? [{
+            title: 'Checkout',
+            href: '/Checkout',
+        }] : []),
+        {
+            title: 'Refund',
+            href: '/Refund',
+        },
+    ];
 
     const [saleRef, setSaleRef] = useState('');
     const [sale, setSale] = useState<RefundableSale | null>(null);

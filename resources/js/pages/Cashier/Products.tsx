@@ -30,10 +30,6 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-const breadcrumbs: BreadcrumbItem[] = [
-    { title: 'Products', href: '/Products' },
-];
-
 type Product = {
     id: number;
     name: string;
@@ -156,6 +152,25 @@ export default function Products() {
     const effectiveBranch: 'all' | 'lagonglong' | 'balingasag' = isBranchRestrictedUser
         ? (userBranchKey as 'lagonglong' | 'balingasag')
         : globalBranch;
+
+    const breadcrumbs: BreadcrumbItem[] = [
+        ...(isOwner ? [{
+            title: 'Owner Dashboard',
+            href: '/dashboard',
+        }] : []),
+
+          ...(user?.role === 'cashier' ? [{
+            title: 'Checkout',
+            href: '/Checkout',
+        }] : []),
+
+         ...(user?.role === 'staff' ? [{
+            title: 'Staff Dashboard',
+            href: '/dashboard',
+        }] : []),
+        
+        { title: 'Products', href: '/Products' },
+    ];
 
     const [productsRefreshNonce, setProductsRefreshNonce] = useState(0);
     const [products, setProducts] = useState<Product[]>(productsPaginator?.data ?? []);

@@ -24,13 +24,6 @@ import {
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
-const breadcrumbs: BreadcrumbItem[] = [
-    {
-        title: 'Activity Log',
-        href: '/cashier/activity-log',
-    },
-];
-
 type LogRow = {
     id: number;
     user: string;
@@ -121,7 +114,20 @@ function isInDateRange(iso: string, range: string) {
 }
 
 export default function CashierActivityLog() {
-    const { logs } = usePage<{ logs: LogRow[] }>().props;
+    const { props } = usePage<{ logs: LogRow[]; auth?: { user?: { role: string } } }>();
+    const logs = props.logs;
+    const userRole = props.auth?.user?.role;
+
+    const breadcrumbs: BreadcrumbItem[] = [
+        ...(userRole === 'cashier' ? [{
+            title: 'Checkout',
+            href: '/Checkout',
+        }] : []),
+        {
+            title: 'Activity Log',
+            href: '/cashier/activity-log',
+        },
+    ];
 
     const [searchTerm, setSearchTerm] = useState('');
     const [categoryFilter, setCategoryFilter] = useState<string>('all');

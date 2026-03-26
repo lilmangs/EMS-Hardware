@@ -6,6 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 const breadcrumbs: BreadcrumbItem[] = [
+        {                  
+            title: 'Staff Dashboard',
+            href: '/dashboard',
+        },
     {
         title: 'Archive',
         href: '/staff/archive',

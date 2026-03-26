@@ -1,5 +1,6 @@
 import { Head, usePage } from '@inertiajs/react';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { toast } from 'sonner';
 import FullCalendar from '@fullcalendar/react';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -52,6 +53,45 @@ function formatDateTime(iso: string) {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return iso;
     return d.toLocaleString();
+}
+
+function formatUserFriendlyDateTime(iso: string | null) {
+    if (!iso) return 'No date set';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    const dateOnly = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    
+    let dateStr = '';
+    if (dateOnly.getTime() === today.getTime()) {
+        dateStr = 'Today';
+    } else if (dateOnly.getTime() === tomorrow.getTime()) {
+        dateStr = 'Tomorrow';
+    } else if (dateOnly.getTime() === yesterday.getTime()) {
+        dateStr = 'Yesterday';
+    } else {
+        dateStr = d.toLocaleDateString('en-US', { 
+            weekday: 'short', 
+            month: 'short', 
+            day: 'numeric',
+            year: d.getFullYear() !== now.getFullYear() ? 'numeric' : undefined
+        });
+    }
+    
+    const timeStr = d.toLocaleTimeString('en-US', { 
+        hour: 'numeric', 
+        minute: '2-digit',
+        hour12: true 
+    });
+    
+    return `${dateStr} at ${timeStr}`;
 }
 
 const toIsoDateTime = (raw: string) => {
@@ -135,14 +175,19 @@ export default function Calendar() {
     const [data, setData] = useState<CalendarData | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
-    const [success, setSuccess] = useState('');
-    const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
-    const [activeTab, setActiveTab] = useState<'queue' | 'pending'>('queue');
-
+        const [lastUpdatedAt, setLastUpdatedAt] = useState<Date | null>(null);
+    
     const [selectedDay, setSelectedDay] = useState<string>(() => new Date().toISOString().slice(0, 10));
 
     const [isDetailsOpen, setIsDetailsOpen] = useState(false);
     const [detailsDelivery, setDetailsDelivery] = useState<DeliveryRow | null>(null);
+
+    const [isRescheduleConfirmOpen, setIsRescheduleConfirmOpen] = useState(false);
+    const [pendingReschedule, setPendingReschedule] = useState<{
+        delivery: DeliveryRow;
+        newDate: Date;
+        revert: () => void;
+    } | null>(null);
 
     const [proofPhoto, setProofPhoto] = useState<File | null>(null);
     const [proofPhotoPreview, setProofPhotoPreview] = useState<string>('');
@@ -248,14 +293,6 @@ export default function Calendar() {
         };
     }, []);
 
-    // Auto-dismiss success messages after 4 seconds
-    useEffect(() => {
-        if (success) {
-            const timer = setTimeout(() => setSuccess(''), 4000);
-            return () => clearTimeout(timer);
-        }
-    }, [success]);
-
     const onDatesSet = useCallback(
         (arg: DatesSetArg) => {
             rangeRef.current = { start: arg.startStr, end: arg.endStr };
@@ -296,7 +333,7 @@ export default function Calendar() {
 
     useEffect(() => {
         setError('');
-        setSuccess('');
+        toast.dismiss();
         setSelectedIds([]);
     }, [selectedDay]);
 
@@ -343,7 +380,7 @@ export default function Calendar() {
     const queueForSelectedDay = useMemo(() => {
         const scheduled = data?.scheduled ?? [];
         const day = selectedDay;
-        const list = scheduled.filter((d) => (d.scheduled_for ?? '').slice(0, 10) === day);
+        const list = scheduled.filter((d) => (d.scheduled_for ?? '').slice(0, 10) === day && d.status !== 'delivered');
         return list.sort((a, b) => {
             return String(a.scheduled_for ?? '').localeCompare(String(b.scheduled_for ?? ''));
         });
@@ -356,7 +393,7 @@ export default function Calendar() {
     const bulkSetOutForDelivery = useCallback(async () => {
         if (selectedIds.length === 0) return;
         setError('');
-        setSuccess('');
+        toast.dismiss();
         setIsLoading(true);
         try {
             const res = await fetch('/delivery/calendar/bulk-status', {
@@ -368,14 +405,18 @@ export default function Calendar() {
                     'X-Requested-With': 'XMLHttpRequest',
                 },
                 credentials: 'same-origin',
-                body: JSON.stringify({
-                    delivery_ids: selectedIds,
-                    status: 'out_for_delivery',
-                }),
+                body: JSON.stringify({ delivery_ids: selectedIds, status: 'out_for_delivery' }),
             });
+
             const json = await res.json().catch(() => null);
-            if (!res.ok) throw new Error(json?.message || 'Failed to update status');
-            setSuccess(`${selectedIds.length} order${selectedIds.length > 1 ? 's' : ''} set as Out for Delivery.`);
+            if (!res.ok) {
+                console.error('Bulk status error:', JSON.stringify(json, null, 2));
+                console.error('Status:', res.status);
+                console.error('Sent payload:', { delivery_ids: selectedIds, status: 'out_for_delivery' });
+                throw new Error(json?.message || json?.errors?.delivery_ids?.[0] || json?.errors?.status?.[0] || `Failed to update status (${res.status})`);
+            }
+
+            toast.success(`${selectedIds.length} order${selectedIds.length > 1 ? 's' : ''} set as Out for Delivery.`);
             setSelectedIds([]);
             await fetchData(rangeRef.current ?? undefined);
         } catch (e: any) {
@@ -383,16 +424,7 @@ export default function Calendar() {
         } finally {
             setIsLoading(false);
         }
-    }, [selectedIds, fetchData]);
-
-    const onEventClick = useCallback((arg: EventClickArg) => {
-        const delivery = (arg.event.extendedProps as any)?.delivery as DeliveryRow | undefined;
-        if (!delivery) return;
-        setDetailsDelivery(delivery);
-        setIsDetailsOpen(true);
-        setProofPhoto(null);
-        if (delivery.scheduled_for) setSelectedDay(delivery.scheduled_for.slice(0, 10));
-    }, []);
+    }, [fetchData, selectedIds]);
 
     const onEventDrop = useCallback(
         async (arg: EventDropArg) => {
@@ -401,34 +433,74 @@ export default function Calendar() {
             const next = arg.event.start;
             if (!next) return;
 
-            try {
-                const res = await fetch('/delivery/calendar/schedule', {
-                    method: 'POST',
-                    headers: {
-                        Accept: 'application/json',
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': csrfToken(),
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                    credentials: 'same-origin',
-                    body: JSON.stringify({
-                        delivery_id: delivery.id,
-                        scheduled_for: next.toISOString(),
-                    }),
-                });
-
-                const json = await res.json().catch(() => null);
-                if (!res.ok) throw new Error(json?.message || 'Failed to reschedule');
-
-                setSuccess('Rescheduled.');
-                await fetchData();
-            } catch (e: any) {
-                setError(e?.message ? String(e.message) : 'Failed to reschedule');
-                arg.revert();
-            }
+            // Show confirmation dialog instead of immediately rescheduling
+            setPendingReschedule({
+                delivery,
+                newDate: next,
+                revert: arg.revert,
+            });
+            setIsRescheduleConfirmOpen(true);
         },
-        [fetchData],
+        [],
     );
+
+    const confirmReschedule = useCallback(async () => {
+        if (!pendingReschedule) return;
+
+        try {
+            const res = await fetch('/delivery/calendar/schedule', {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': csrfToken(),
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({
+                    delivery_id: pendingReschedule.delivery.id,
+                    scheduled_for: pendingReschedule.newDate.toISOString(),
+                }),
+            });
+
+            const json = await res.json().catch(() => null);
+            if (!res.ok) throw new Error(json?.message || 'Failed to reschedule');
+
+            toast.success('Rescheduled successfully', {
+                style: {
+                    background: '#ea580c',
+                    color: '#ffffff',
+                    border: '1px solid #c2410c',
+                },
+            });
+            await fetchData();
+        } catch (e: any) {
+            setError(e?.message ? String(e.message) : 'Failed to reschedule');
+            pendingReschedule.revert();
+        } finally {
+            setIsRescheduleConfirmOpen(false);
+            setPendingReschedule(null);
+        }
+    }, [pendingReschedule, fetchData]);
+
+    const cancelReschedule = useCallback(() => {
+        if (pendingReschedule) {
+            pendingReschedule.revert();
+        }
+        setIsRescheduleConfirmOpen(false);
+        setPendingReschedule(null);
+    }, [pendingReschedule]);
+
+    const onEventClick = useCallback((arg: EventClickArg) => {
+        const delivery = (arg.event.extendedProps as any)?.delivery as DeliveryRow | undefined;
+        if (!delivery) return;
+        setDetailsDelivery(delivery);
+        setIsDetailsOpen(true);
+        setProofPhoto(null);
+        if (delivery.scheduled_for) {
+            setSelectedDay(delivery.scheduled_for.slice(0, 10));
+        }
+    }, []);
 
     const setDeliveryStatus = useCallback(
         async (deliveryId: number, status: DeliveryStatus) => {
@@ -472,10 +544,7 @@ export default function Calendar() {
                     'X-Requested-With': 'XMLHttpRequest',
                 },
                 credentials: 'same-origin',
-                body: JSON.stringify({
-                    delivery_id: deliveryId,
-                    status,
-                }),
+                body: JSON.stringify({ delivery_id: deliveryId, status }),
             });
 
             const json = await res.json().catch(() => null);
@@ -575,35 +644,23 @@ export default function Calendar() {
                     <div className="order-1 flex min-h-0 flex-col lg:order-2 lg:col-span-4">
                         <Card className="flex min-h-0 flex-1 flex-col shadow-sm border-none bg-background">
                             {/* Panel Tab Header */}
-                            <CardHeader className="shrink-0 space-y-2 bg-muted/20 pb-2 p-3 border-b">
+                            <CardHeader className="shrink-0 space-y-2 bg-orange-100/30 dark:bg-orange-900/20 pb-2 p-3 border-b border-orange-200/50 dark:border-orange-800/50">
                                 <div className="flex items-center justify-between">
-                                    <div className="flex bg-muted p-1 rounded-lg">
+                                    <div className="flex bg-orange-200/50 dark:bg-orange-800/30 p-1 rounded-lg">
                                         <button
-                                            onClick={() => setActiveTab('queue')}
-                                            className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${activeTab === 'queue' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                                            className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all bg-orange-600 text-white shadow-sm`}
                                         >
                                             Day Queue
-                                        </button>
-                                        <button
-                                            onClick={() => setActiveTab('pending')}
-                                            className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${activeTab === 'pending' ? 'bg-background shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                                        >
-                                            New Deliveries ({data?.unscheduled?.length ?? 0})
                                         </button>
                                     </div>
                                     <label className="flex cursor-pointer select-none items-center gap-1.5 text-xs font-bold text-muted-foreground">
                                         <input
                                             type="checkbox"
                                             className="h-4 w-4 rounded accent-orange-600"
-                                            checked={
-                                                activeTab === 'queue'
-                                                    ? (selectedIds.length === queueForSelectedDay.length && queueForSelectedDay.length > 0)
-                                                    : (selectedIds.length === (data?.unscheduled?.length ?? 0) && (data?.unscheduled?.length ?? 0) > 0)
-                                            }
+                                            checked={selectedIds.length === queueForSelectedDay.length && queueForSelectedDay.length > 0}
                                             onChange={(e) => {
                                                 if (e.target.checked) {
-                                                    const list = activeTab === 'queue' ? queueForSelectedDay : (data?.unscheduled ?? []);
-                                                    setSelectedIds(list.map((d) => d.id));
+                                                    setSelectedIds(queueForSelectedDay.map((d) => d.id));
                                                 } else {
                                                     setSelectedIds([]);
                                                 }
@@ -615,14 +672,14 @@ export default function Calendar() {
 
                                 <div className="space-y-1">
                                     <CardTitle className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                                        {activeTab === 'queue' ? `Deliveries for ${selectedDay || 'Today'}` : 'Unscheduled Deliveries'}
+                                        Deliveries for {selectedDay || 'Today'}
                                     </CardTitle>
                                     <CardDescription className="text-[10px] italic">
-                                        {activeTab === 'queue' ? 'Items scheduled for this date.' : 'Drag to calendar or assign a date.'}
+                                        Items scheduled for this date.
                                     </CardDescription>
                                 </div>
 
-                                {selectedIds.length > 0 && activeTab === 'queue' && (
+                                {selectedIds.length > 0 && (
                                     <button
                                         type="button"
                                         disabled={isLoading}
@@ -638,14 +695,14 @@ export default function Calendar() {
                             </CardHeader>
 
                             {/* Scrollable list content */}
-                            <CardContent className="min-h-0 flex-1 overflow-y-auto bg-muted/5 p-4 pt-2">
+                            <CardContent className="min-h-0 flex-1 overflow-y-auto bg-orange-50/20 dark:bg-orange-950/10 p-4 pt-2">
                                 {(() => {
-                                    const list = activeTab === 'queue' ? queueForSelectedDay : (data?.unscheduled ?? []);
+                                    const list = queueForSelectedDay;
                                     if (list.length === 0) {
                                         return (
                                             <div className="flex flex-col items-center justify-center py-10 text-center opacity-50">
                                                 <div className="mb-2 text-2xl">📦</div>
-                                                <div className="text-xs font-bold uppercase tracking-wide">No {activeTab} items</div>
+                                                <div className="text-xs font-bold uppercase tracking-wide">No queue items</div>
                                                 <div className="text-[10px]">Everything looks clear!</div>
                                             </div>
                                         );
@@ -695,7 +752,7 @@ export default function Calendar() {
                                                                 <div className="mt-2 flex items-center justify-between border-t border-muted pt-2 text-[10px]">
                                                                     <div className="font-bold text-orange-600">{peso(d.delivery_total)}</div>
                                                                     <div className="font-medium text-muted-foreground italic">
-                                                                        {d.scheduled_for ? formatDateTime(d.scheduled_for) : 'Waiting for schedule…'}
+                                                                        {formatUserFriendlyDateTime(d.scheduled_for)}
                                                                     </div>
                                                                 </div>
                                                             </div>
@@ -765,7 +822,7 @@ export default function Calendar() {
                                         <div>
                                             <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Scheduled For</div>
                                             <div className="text-sm font-medium">
-                                                {detailsDelivery.scheduled_for ? formatDateTime(detailsDelivery.scheduled_for) : 'No date set'}
+                                                {formatUserFriendlyDateTime(detailsDelivery.scheduled_for)}
                                             </div>
                                         </div>
 
@@ -788,7 +845,7 @@ export default function Calendar() {
                                         <div className="text-sm font-bold">Proof of Delivery</div>
                                         {detailsDelivery.status === 'delivered' ? (
                                             <div className="mt-1 text-xs text-green-600 font-medium">
-                                                Captured on {detailsDelivery.delivered_at ? formatDateTime(detailsDelivery.delivered_at) : 'Completion'}
+                                                Captured on {formatUserFriendlyDateTime(detailsDelivery.delivered_at)}
                                             </div>
                                         ) : (
                                             <div className="mt-1 text-xs text-muted-foreground">Marking as "Delivered" requires a photo.</div>
@@ -909,9 +966,9 @@ export default function Calendar() {
                                                     disabled={!proofPhoto}
                                                     onClick={() => {
                                                         setError('');
-                                                        setSuccess('');
+                                                        toast.dismiss();
                                                         setDeliveryStatus(detailsDelivery.id, 'delivered')
-                                                            .then(() => setSuccess('Delivered.'))
+                                                            .then(() => toast.success('Delivered.'))
                                                             .catch((e: any) => {
                                                                 setError(e?.message ? String(e.message) : 'Failed to mark delivered');
                                                             });
@@ -928,27 +985,51 @@ export default function Calendar() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-            {/* ── Success Popup Notification ── */}
-            {success && (
-                <div className="fixed bottom-6 left-1/2 z-[9999] -translate-x-1/2 transform animate-in fade-in slide-in-from-bottom-5 duration-300">
-                    <div className="flex items-center gap-3 rounded-2xl bg-orange-600 px-6 py-3.5 text-sm font-bold text-white shadow-2xl ring-4 ring-orange-600/20">
-                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-white/20">
-                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                            </svg>
+
+            {/* Reschedule Confirmation Dialog */}
+            <Dialog open={isRescheduleConfirmOpen} onOpenChange={setIsRescheduleConfirmOpen}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="text-lg font-bold">Confirm Reschedule</DialogTitle>
+                        <DialogDescription className="text-sm text-muted-foreground">
+                            Are you sure you want to reschedule this delivery?
+                        </DialogDescription>
+                    </DialogHeader>
+                    
+                    {pendingReschedule && (
+                        <div className="py-4">
+                            <div className="space-y-2">
+                                <div className="flex justify-between text-sm">
+                                    <span className="font-medium">Delivery Ref:</span>
+                                    <span>{pendingReschedule.delivery.ref}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                    <span className="font-medium">Customer:</span>
+                                    <span>{pendingReschedule.delivery.customer_name}</span>
+                                </div>
+                                <div className="flex justify-between text-sm">
+                                    <span className="font-medium">New Date:</span>
+                                    <span className="text-orange-600 font-medium">
+                                        {formatUserFriendlyDateTime(pendingReschedule.newDate.toISOString())}
+                                    </span>
+                                </div>
+                            </div>
                         </div>
-                        <span>{success}</span>
-                        <button 
-                            onClick={() => setSuccess('')} 
-                            className="ml-4 rounded-full bg-white/10 p-1 hover:bg-white/20 transition-colors"
+                    )}
+                    
+                    <DialogFooter className="gap-2">
+                        <Button variant="outline" onClick={cancelReschedule}>
+                            Cancel
+                        </Button>
+                        <Button 
+                            onClick={confirmReschedule}
+                            className="bg-orange-600 hover:bg-orange-700"
                         >
-                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-            )}
+                            Confirm Reschedule
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </AppLayout>
     );
 }

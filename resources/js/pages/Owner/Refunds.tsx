@@ -34,6 +34,10 @@ import {
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
+        title: 'Owner Dashboard',
+        href: '/dashboard',
+    },
+    {
         title: 'Refunds',
         href: '/owner/refunds',
     },
@@ -128,7 +132,6 @@ export default function Refunds() {
     const [sort, setSort] = useState<'created_at' | 'amount' | 'branch_key'>('created_at');
     const [dir, setDir] = useState<'asc' | 'desc'>('desc');
     const [page, setPage] = useState(1);
-    const [perPage, setPerPage] = useState(10);
 
     const [isViewOpen, setIsViewOpen] = useState(false);
     const [selectedRefund, setSelectedRefund] = useState<RefundRow | null>(null);
@@ -184,7 +187,6 @@ export default function Refunds() {
             params.set('sort', sort);
             params.set('dir', dir);
             params.set('page', String(page));
-            params.set('per_page', String(perPage));
 
             if (computedDates.from) {
                 params.set('date_from', computedDates.from.toISOString().slice(0, 10));
@@ -212,7 +214,7 @@ export default function Refunds() {
                 setIsLoading(false);
             }
         }
-    }, [computedDates.from, computedDates.to, dir, effectiveBranch, page, perPage, search, sort]);
+    }, [computedDates.from, computedDates.to, dir, effectiveBranch, page, search, sort]);
 
     useEffect(() => {
         return () => {
@@ -224,7 +226,7 @@ export default function Refunds() {
 
     useEffect(() => {
         setPage(1);
-    }, [effectiveBranch, dateRange, dateFrom, dateTo, search, sort, dir, perPage]);
+    }, [effectiveBranch, dateRange, dateFrom, dateTo, search, sort, dir]);
 
     useEffect(() => {
         fetchData();
@@ -345,17 +347,6 @@ export default function Refunds() {
                                     <SelectItem value="yesterday">Yesterday</SelectItem>
                                     <SelectItem value="week">This Week</SelectItem>
                                     <SelectItem value="custom">Custom</SelectItem>
-                                </SelectContent>
-                            </Select>
-
-                            <Select value={String(perPage)} onValueChange={(v: any) => setPerPage(Number(v) || 10)}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Rows" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="10">10 rows</SelectItem>
-                                    <SelectItem value="20">20 rows</SelectItem>
-                                    <SelectItem value="50">50 rows</SelectItem>
                                 </SelectContent>
                             </Select>
                         </div>

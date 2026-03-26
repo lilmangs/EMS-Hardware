@@ -23,13 +23,6 @@ import {
 } from '@/components/ui/dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
-const breadcrumbs: BreadcrumbItem[] = [
-    {
-        title: 'Transaction',
-        href: '/transaction',
-    },
-];
-
 type Receipt = {
     ref: string;
     createdAt: string;
@@ -81,10 +74,23 @@ export default function Transaction() {
             search?: string;
         };
         recent_sales: Sale[];
+        auth?: { user?: { role: string } };
     }>();
 
     const branchKey = props.branch_key;
     const recentSales = props.recent_sales ?? [];
+    const userRole = props.auth?.user?.role;
+
+    const breadcrumbs: BreadcrumbItem[] = [
+        ...(userRole === 'cashier' ? [{
+            title: 'Checkout',
+            href: '/Checkout',
+        }] : []),
+        {
+            title: 'Transaction',
+            href: '/transaction',
+        },
+    ];
     const [lastReceipt, setLastReceipt] = useState<Receipt | null>(null);
     const [isPreviewOpen, setIsPreviewOpen] = useState(false);
 

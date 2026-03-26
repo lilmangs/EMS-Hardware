@@ -33,6 +33,10 @@ import { useBranchFilter } from '@/hooks/use-branch-filter';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
+        title: 'Owner Dashboard',
+        href: '/dashboard',
+    },
+    {
         title: 'Activity Log',
         href: '/ActivityLog',
     },
